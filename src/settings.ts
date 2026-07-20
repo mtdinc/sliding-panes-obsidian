@@ -22,7 +22,7 @@ export class SlidingPanesSettings {
   rotateHeaders: boolean = true;
   headerAlt: boolean = false;
   orienation: Orientation = "mixed";
-  stackingEnabled: boolean = true;
+  stackingEnabled: boolean = false;
   smoothAnimation: boolean = true;
 }
 
