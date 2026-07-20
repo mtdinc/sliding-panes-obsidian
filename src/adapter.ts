@@ -106,3 +106,16 @@ export function requestLayoutRecompute(group: TabGroupLike): void {
 export function leafEl(leaf: unknown): HTMLElement | null {
   return (leaf as any).containerEl ?? null;
 }
+
+// The scrollable `.workspace-tab-container` element inside a tab group, or
+// null. Popout windows are separate JavaScript realms, so `instanceof
+// HTMLElement` against THIS window's constructor wrongly fails for their
+// elements — we duck-type on `.style` instead.
+export function getTabContainer(group: TabGroupLike): HTMLElement | null {
+  const tabContainer = group.containerEl.querySelector('.workspace-tab-container');
+  const element = tabContainer as HTMLElement | null;
+  if (element && element.style !== undefined) {
+    return element;
+  }
+  return null;
+}

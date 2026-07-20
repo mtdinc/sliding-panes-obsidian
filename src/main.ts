@@ -1,8 +1,9 @@
 import { Platform, Plugin, WorkspaceLeaf } from 'obsidian';
 import { SlidingPanesSettings, SlidingPanesSettingTab, SlidingPanesCommands } from './settings';
-import { getRootTabGroups, isStacked, setStacked, leafEl, requestLayoutRecompute, TabGroupLike } from './adapter';
+import { getRootTabGroups, setStacked, requestLayoutRecompute, TabGroupLike } from './adapter';
 import * as styleManager from './style-manager';
 import * as widthManager from './width-manager';
+import * as scrollManager from './scroll-manager';
 
 // How long to wait after the last resize event before recalculating widths.
 const RESIZE_DEBOUNCE_MS = 100;
@@ -10,8 +11,9 @@ const RESIZE_DEBOUNCE_MS = 100;
 // ---------------------------------------------------------------------------
 // main.ts is a thin lifecycle shell. It wires settings + commands, applies our
 // styles, stacks the root tab groups, and forwards workspace events to the
-// three owners: style-manager (classes/style), width-manager (inline widths),
-// and adapter (private-API access). It contains no layout math itself.
+// four owners: style-manager (classes/style), width-manager (inline widths),
+// scroll-manager (active-pane scrolling), and adapter (private-API access).
+// It contains no layout math itself.
 // ---------------------------------------------------------------------------
 export default class SlidingPanesPlugin extends Plugin {
   settings: SlidingPanesSettings;
@@ -175,38 +177,12 @@ export default class SlidingPanesPlugin extends Plugin {
     }, RESIZE_DEBOUNCE_MS);
   };
 
-  // Active leaf changed: scroll it into view, but only when its group is one we
-  // manage and is currently stacked.
+  // Active leaf changed: scroll it into view. scroll-manager handles the
+  // "is this a managed stacked group" check and the deferred timing.
   private handleActiveLeafChange = (leaf: WorkspaceLeaf | null) => {
     if (this.settings.disabled || !leaf) {
       return;
     }
-    this.scrollActiveIntoView(leaf);
-  };
-
-  private scrollActiveIntoView = (leaf: WorkspaceLeaf) => {
-    const element = leafEl(leaf);
-    if (!element) {
-      return;
-    }
-
-    const group = this.findManagedGroupForLeaf(element);
-    if (!group || !isStacked(group)) {
-      return;
-    }
-
-    const behavior: ScrollBehavior = this.settings.smoothAnimation ? 'smooth' : 'auto';
-    element.scrollIntoView({ behavior: behavior, inline: 'nearest', block: 'nearest' });
-  };
-
-  // Find which managed root tab group contains a given leaf element, or null.
-  private findManagedGroupForLeaf = (leafElement: HTMLElement): TabGroupLike | null => {
-    const groups = getRootTabGroups(this.app);
-    for (const group of groups) {
-      if (group.containerEl.contains(leafElement)) {
-        return group;
-      }
-    }
-    return null;
+    scrollManager.scrollLeafIntoView(this.app, this.settings, leaf);
   };
 }

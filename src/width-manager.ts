@@ -1,6 +1,6 @@
 import { App, Platform } from 'obsidian';
 import { SlidingPanesSettings } from './settings';
-import { TabGroupLike, getRootTabGroups, isStacked } from './adapter';
+import { TabGroupLike, getRootTabGroups, getTabContainer, isStacked } from './adapter';
 
 // ---------------------------------------------------------------------------
 // width-manager.ts is the SOLE owner of the inline width styles we write onto
@@ -25,18 +25,10 @@ export function getFixedWidth(settings: SlidingPanesSettings): number {
 // Popout windows are separate JavaScript realms, so `instanceof HTMLElement`
 // against THIS window's constructor wrongly fails for their elements. We
 // duck-type on `.style` instead of using instanceof anywhere in this file.
+// (adapter.getTabContainer applies the same rule for the container itself.)
 function isStylableElement(node: unknown): node is HTMLElement {
   const element = node as HTMLElement | null;
   return !!element && element.style !== undefined;
-}
-
-// The `.workspace-tab-container` element inside a tab group, or null.
-function getTabContainer(group: TabGroupLike): HTMLElement | null {
-  const tabContainer = group.containerEl.querySelector('.workspace-tab-container');
-  if (isStylableElement(tabContainer)) {
-    return tabContainer;
-  }
-  return null;
 }
 
 // The direct `.workspace-leaf` children of a tab container.
