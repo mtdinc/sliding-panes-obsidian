@@ -1,4 +1,3 @@
-import './styles.scss'
 import { Plugin } from 'obsidian';
 
 export abstract class PluginBase extends Plugin {

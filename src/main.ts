@@ -60,9 +60,6 @@ export default class SlidingPanesPlugin extends PluginBase {
 
   // really enable things (once the layout is ready)
   reallyEnable = () => {
-    // we don't need the event handler anymore
-    this.app.workspace.off('layout-ready', this.reallyEnable);
-
     // add some extra classes that can't fit in the styles.css
     // because they use settings
     this.addStyle();
@@ -109,9 +106,15 @@ export default class SlidingPanesPlugin extends PluginBase {
     leaf.containerEl.classList.remove('mod-am-left-of-active');
     leaf.containerEl.classList.remove('mod-am-right-of-active');
 
+    // deferred leaves (Obsidian 1.7.2+) have no loaded view, so there is no iconEl to clean up
+    if (leaf.isDeferred) return;
+
+    // iconEl is a private Obsidian property and may be absent on modern versions
     const iconEl = leaf.view.iconEl;
+    if (!iconEl) return;
     const iconText:string = iconEl.getAttribute("aria-label");
-    if (iconText.includes("(")) {
+    // aria-label may be missing (null), so guard before calling string methods
+    if (iconText && iconText.includes("(")) {
       iconEl.setAttribute("aria-label", iconText.substring(iconText.lastIndexOf('(') + 1, iconText.lastIndexOf(')')));
     }
   }
@@ -312,10 +315,13 @@ export default class SlidingPanesPlugin extends PluginBase {
         leaf.width = width
         totalWidth += width
 
-        if(leaf instanceof WorkspaceLeaf){
+        // deferred leaves (Obsidian 1.7.2+) have no loaded view, so skip the icon labelling
+        if(leaf instanceof WorkspaceLeaf && !leaf.isDeferred){
+          // iconEl is a private Obsidian property and may be absent on modern versions;
+          // aria-label may also be missing — in either case leave the label untouched
           const iconEl = (leaf.view as any).iconEl;
-          const iconText = iconEl.getAttribute("aria-label");
-          if (!iconText.includes("(")) {
+          const iconText = iconEl ? iconEl.getAttribute("aria-label") : null;
+          if (iconText && !iconText.includes("(")) {
             iconEl.setAttribute("aria-label", `${leaf.getDisplayText()} (${iconText})`);
           }
         }
@@ -399,6 +405,8 @@ export default class SlidingPanesPlugin extends PluginBase {
     // detaching a leaf while iterating messes with the iteration
     const leavesToDetach: WorkspaceLeaf[] = [];
     this.app.workspace.iterateRootLeaves((leaf: WorkspaceLeaf) => {
+      // deferred leaves (Obsidian 1.7.2+) have no loaded view, so their file can't match
+      if (leaf.isDeferred) return;
       if (leaf.view instanceof FileView && leaf.view.file == file) {
         leavesToDetach.push(leaf);
       }

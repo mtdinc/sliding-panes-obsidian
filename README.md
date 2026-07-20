@@ -1,105 +1,124 @@
-# Sliding Panes (Andy Matuschak Mode) Obsidian Plugin
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/deathau/sliding-panes-obsidian?style=for-the-badge&sort=semver)](https://github.com/deathau/sliding-panes-obsidian/releases/latest)
-![GitHub All Releases](https://img.shields.io/github/downloads/deathau/sliding-panes-obsidian/total?style=for-the-badge)
+# Sliding Panes (Andy Matuschak Mode) — Maintained Fork
 
-Sliding Panes (Andy Matuschak Mode) as a plugin for [Obsidian](https://obsidian.md).
+> **About this fork (2026):** This is a fork of
+> [deathau/sliding-panes-obsidian](https://github.com/deathau/sliding-panes-obsidian),
+> which received its last update in **September 2022** (v3.4.0). Shortly after,
+> Obsidian 1.0 replaced the pane system with tabs and shipped a native
+> "Stacked tabs" mode, and the original plugin was no longer maintained and was
+> eventually removed from the community plugin directory.
+>
+> We copied the project here in 2026 to keep maintaining it, because native
+> Stacked Tabs still doesn't cover everything this plugin offered (per-pane
+> resizing, hiding/sizing the rotated title spines, focus left/right
+> navigation). All credit for the original plugin goes to
+> [death_au](https://github.com/deathau).
+
+Sliding Panes (Andy Matuschak Mode) as a plugin for [Obsidian](https://obsidian.md),
+inspired by the UI of [Andy Matuschak's notes](https://notes.andymatuschak.org/).
 
 ![Screenshot](https://github.com/deathau/sliding-panes-obsidian/raw/master/screenshot.gif)
 
-This plugin changes the way panes in the main workspace are handled — inspired by
-the UI of [Andy Matuschak's notes](https://notes.andymatuschak.org/).  
-Instead of shrinking the workspace to fit panels, the panels will remain a fixed
-width (but resizable) and stack so you can scroll between them. Note headers are rotated and added
-to the left of the pane like a spine (optional), and will stack up as you scroll (also optional), allowing
-easy navigation between them.
+Instead of shrinking the workspace to fit panels, the panels remain a fixed
+(but resizable) width and stack so you can scroll between them. Note headers
+are rotated and added to the side of the pane like a spine (optional), and
+stack up as you scroll (also optional), allowing easy navigation between them.
 
-(Note: To open links in a new pane in Obsidian, ctrl/cmd click them)
+## Current status (2026)
 
-### Other Features
-- Note headers stack up on the right _as well as_ the left.
-- Changing an active pane scrolls that pane into view.
-- Togglable without having to copy CSS into your theme.
-- Togglable features, such as the rotated headers and stacking
+- ✅ **Toolchain modernized:** builds with esbuild + TypeScript 5 against the
+  current Obsidian API (the original used Rollup 2 / TS 4.7 / API 0.15).
+- ✅ **Crash guards added** for modern Obsidian (deferred views, header DOM
+  changes).
+- ⚠️ **Known limitation:** the core sliding-pane layout was designed before
+  Obsidian 1.0 introduced tabs. On current Obsidian the visual behavior is
+  degraded — the original author himself noted the rotated-spine approach
+  "needs to be completely re-thought" for the tab-based workspace. Adapting
+  the layout engine to the modern `WorkspaceTabs` structure is the main open
+  work item of this fork.
+- ℹ️ **Native alternative:** Obsidian's built-in **Stacked tabs**
+  (Settings → Editor, or the tab-stack toggle) covers the basic sliding-panes
+  experience out of the box. This fork exists for the parts it doesn't cover.
 
-### Settings
-- **Toggle Sliding Panes** - Turns sliding panes on or off globally *(also available via command/hotkey)*
-- **Leaf Auto Width** - If on, the width of the pane should fill the available space *(also available via command/hotkey)*
-- **Leaf Width** - The default width of a single pane
-- **Toggle rotated headers** - Rotates headers to use as spines *(also available via command/hotkey)*
-- **Swap rotated header direction** - Swaps the direction of rotated headers  *(also available via command/hotkey)*
-- **Toggle stacking** - Panes will stack up to the left and right *(also available via command/hotkey)*
-- **Spine Width** - The width of the rotated header (or gap) for stacking
+## Features
 
-### Compatibility
+- Panes stay a fixed, resizable width and stack as you scroll
+- Note headers stack up on the right _as well as_ the left
+- Changing the active pane scrolls it into view
+- Togglable without copying CSS into your theme
+- Togglable sub-features: rotated headers, header direction, stacking
 
-Custom plugins are only available for Obsidian v0.9.7+.
+## Settings
 
-The current API of this repo targets Obsidian **v0.10.9**. 
+- **Toggle Sliding Panes** — turns sliding panes on or off globally *(also available via command/hotkey)*
+- **Leaf Auto Width** — pane width fills the available space *(also via command/hotkey)*
+- **Leaf Width** — the default width of a single pane
+- **Toggle rotated headers** — rotates headers to use as spines *(also via command/hotkey)*
+- **Swap rotated header direction** — swaps the direction of rotated headers *(also via command/hotkey)*
+- **Toggle stacking** — panes stack up to the left and right *(also via command/hotkey)*
+- **Spine Width** — the width of the rotated header (or gap) for stacking
 
-### Notes
-This is all very expermental at the moment, so parts might not work, etc.
+## Compatibility
 
-It still gets a bit slow if you're loading a lot of documents, so try not to
-load too many at once.
+This fork targets the current Obsidian API (`minAppVersion` in
+`manifest.json` is the authoritative value). It is **not** listed in the
+community plugin directory.
 
 ## Installation
 
-### From within Obsidian
-From Obsidian v0.9.8, you can activate this plugin within Obsidian by doing the following:
-- Open Settings > Third-party plugin
-- Make sure Safe mode is **off**
-- Click Browse community plugins
-- Search for this plugin
-- Click Install
-- Once installed, close the community plugins window and activate the newly installed plugin
-#### Updates
-You can follow the same procedure to update the plugin
+This plugin is not in the community directory, so installation is manual:
 
-### From GitHub
-- Download the Latest Release from the Releases section of the GitHub Repository
-- Extract the plugin folder from the zip to your vault's plugins folder: `<vault>/.obsidian/plugins/`  
-Note: On some machines the `.obsidian` folder may be hidden. On MacOS you should be able to press `Command+Shift+Dot` to show the folder in Finder.
-- Reload Obsidian
-- If prompted about Safe Mode, you can disable safe mode and enable the plugin.
-Otherwise head to Settings, third-party plugins, make sure safe mode is off and
-enable the plugin from there.
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest
+   release on this repository (or build them yourself, see Development).
+2. Create the folder `<vault>/.obsidian/plugins/sliding-panes-obsidian/` and
+   copy the three files into it.
+   (On macOS press `Cmd+Shift+.` in Finder to show the hidden `.obsidian` folder.)
+3. In Obsidian, open **Settings → Community plugins**, turn off Restricted
+   mode if needed, and enable **Sliding Panes (Andy's Mode)**.
 
-## Security
-> Third-party plugins can access files on your computer, connect to the internet, and even install additional programs.
-
-The source code of this plugin is available on GitHub for you to audit yourself, but installing plugins into Obsidian is currently a matter of trust.
-
-I can assure you here that I do nothing to collect your data, send information to the internet or otherwise do anything nefarious with your system. However, be aware that I *could*, and you only have my word that I don't.
+Alternatively, use [BRAT](https://github.com/TfTHacker/obsidian42-brat) and
+point it at `mtdinc/sliding-panes-obsidian`.
 
 ## Development
 
-This project uses Typescript to provide type checking and documentation.  
-The repo depends on the latest [plugin API](https://github.com/obsidianmd/obsidian-api) in Typescript Definition format, which contains TSDoc comments describing what it does.
+```bash
+npm install        # install dependencies
+npm run dev        # TypeScript watch mode (styles compile once at startup)
+npm run build      # type-check + production build (main.js + styles.css)
+```
 
-**Note:** The Obsidian API is still in early alpha and is subject to change at any time!
+Note: `npm run dev` recompiles TypeScript on every change, but styles are only
+compiled when it starts — after editing `src/styles.scss`, restart `npm run dev`
+or run `npm run build` to regenerate `styles.css`.
 
-If you want to contribute to development and/or just customize it with your own
-tweaks, you can do the following:
-- Clone this repo.
-- `npm i` or `yarn` to install dependencies
-- `npm run build` to compile.
-- Copy `manifest.json`, `main.js` and `styles.css` to a subfolder of your plugins
-folder (e.g, `<vault>/.obsidian/plugins/<plugin-name>/`)
-- Reload obsidian to see changes
+Copy `manifest.json`, `main.js`, and `styles.css` into
+`<vault>/.obsidian/plugins/sliding-panes-obsidian/` and reload Obsidian to
+test changes. Styles are authored in `src/styles.scss` and compiled to
+`styles.css` by the build.
 
-Alternately, you can clone the repo directly into your plugins folder and once
-dependencies are installed use `npm run dev` to start compilation in watch mode.  
-You may have to reload obsidian (`ctrl+R`) to see changes.
+## Credits & License
 
-## Pricing
-Huh? This is an open-source plugin I made *for fun*. It's completely free.
-However, if you absolutely *have* to send me money because you like it that
-much, feel free to throw some coins in my hat via the following:
+Original plugin by [death_au](https://github.com/deathau) — if you find this
+useful, consider supporting the original author:
+[GitHub Sponsors](https://github.com/sponsors/deathau) ·
+[PayPal](https://paypal.me/deathau).
 
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/deathau?style=social)](https://github.com/sponsors/deathau)
-[![Paypal](https://img.shields.io/badge/paypal-deathau-yellow?style=social&logo=paypal)](https://paypal.me/deathau)
+MIT licensed — see [LICENSE](LICENSE). This fork preserves the original MIT
+license and attribution.
 
 # Version History
+
+## 3.5.0 (fork, 2026)
+- Forked from deathau/sliding-panes-obsidian at v3.4.0
+- Migrated build toolchain from Rollup 2 to esbuild; TypeScript 4.7 → 5.x;
+  built against the current Obsidian API typings
+- Added crash guards for deferred views (Obsidian 1.7.2+) and header
+  aria-label changes
+- Removed dead CodeMirror 5 styling and a no-op event unsubscription
+- Added the missing MIT LICENSE file
+
+## 3.4.0
+- Updates to make the plugin load on Obsidian 0.16 (original author's final
+  release; known broken visuals under the new tab UI)
 
 ## 3.3.0
 - Sliding panes should now work as expected in popout windows!

@@ -1,30 +1,26 @@
 {
   "name": "sliding-panes-obsidian",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "Sliding Panes (Andy Matuschak Mode) plugin for Obsidian (https://obsidian.md)",
   "main": "main.js",
   "scripts": {
-    "instal-deps": "npm install",
-    "dev": "rollup --config rollup.config.js -w",
-    "build": "rollup --config rollup.config.js"
+    "dev": "sass src/styles.scss styles.css --no-source-map --style=compressed && node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && sass src/styles.scss styles.css --no-source-map --style=compressed"
   },
   "keywords": [],
   "author": "death_au",
   "repository": {
     "type": "git",
-    "url": "https://github.com/deathau/sliding-panes-obsidian"
+    "url": "https://github.com/mtdinc/sliding-panes-obsidian"
   },
   "license": "MIT",
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^22.0.0",
-    "@rollup/plugin-node-resolve": "^13.3.0",
-    "@rollup/plugin-typescript": "^8.3.3",
-    "@types/node": "^18.0.0",
-    "obsidian": "^0.15.3",
-    "rollup": "^2.75.7",
-    "rollup-plugin-scss": "^3.0.0",
-    "sass": "^1.52.3",
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "latest",
+    "sass": "^1.80.0",
     "tslib": "^2.4.0",
-    "typescript": "^4.7.4"
+    "typescript": "^5.8.0"
   }
 }
