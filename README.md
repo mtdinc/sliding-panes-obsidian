@@ -25,19 +25,19 @@ stack up as you scroll (also optional), allowing easy navigation between them.
 
 ## Current status (2026)
 
+- ✅ **v4.0 re-architecture:** the plugin now builds ON TOP of Obsidian's
+  native **Stacked tabs** instead of fighting the tab-based workspace. Obsidian
+  owns the core sliding layout; this plugin adds the parts it doesn't cover:
+  one-toggle stacking across all tab groups, pane width control (fixed and
+  auto-width), spine width / hiding / direction / text orientation, a classic
+  "slide-off" mode, focus left/right commands, and scroll-active-into-view.
 - ✅ **Toolchain modernized:** builds with esbuild + TypeScript 5 against the
   current Obsidian API (the original used Rollup 2 / TS 4.7 / API 0.15).
-- ✅ **Crash guards added** for modern Obsidian (deferred views, header DOM
-  changes).
-- ⚠️ **Known limitation:** the core sliding-pane layout was designed before
-  Obsidian 1.0 introduced tabs. On current Obsidian the visual behavior is
-  degraded — the original author himself noted the rotated-spine approach
-  "needs to be completely re-thought" for the tab-based workspace. Adapting
-  the layout engine to the modern `WorkspaceTabs` structure is the main open
-  work item of this fork.
-- ℹ️ **Native alternative:** Obsidian's built-in **Stacked tabs**
-  (Settings → Editor, or the tab-stack toggle) covers the basic sliding-panes
-  experience out of the box. This fork exists for the parts it doesn't cover.
+- ⚠️ **Not yet re-added:** per-pane drag-resize (planned; needs live-app
+  iteration). Desktop/tablet only — Obsidian removed stacked tabs on phones.
+- ℹ️ Semantics shifted slightly from v3: "rotated headers off" now hides the
+  spine text (the spine itself is native), and "stacking off" gives the classic
+  slide-off look where panes slide under each other without sticky spines.
 
 ## Features
 
@@ -106,6 +106,17 @@ MIT licensed — see [LICENSE](LICENSE). This fork preserves the original MIT
 license and attribution.
 
 # Version History
+
+## 4.0.0 (fork, 2026)
+- Re-architected on top of Obsidian's native Stacked Tabs: deleted the v3
+  manual layout engine (pane positioning math, private resize monkey-patch,
+  header DOM rewriting) — Obsidian now owns the core sliding layout
+- All v3 settings and commands preserved (same keys, same command ids);
+  existing `data.json` settings load unchanged
+- New: Focus Left Pane / Focus Right Pane commands (work in popout windows)
+- New: auto-stacks all root tab groups when enabled; respects groups you
+  manually un-stack while the plugin is on
+- Spine styling now uses Obsidian's official `--tab-stacked-*` CSS variables
 
 ## 3.5.0 (fork, 2026)
 - Forked from deathau/sliding-panes-obsidian at v3.4.0

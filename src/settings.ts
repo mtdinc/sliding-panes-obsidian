@@ -1,7 +1,9 @@
-import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 
 export type Orientation = "sideway" | "mixed" | "upright"
 
+// Minimal typed view of the plugin, so this file doesn't import main.ts
+// (which would create a circular dependency).
 declare class SlidingPanesPlugin extends Plugin {
   settings: SlidingPanesSettings;
   disable(): void;
@@ -9,6 +11,8 @@ declare class SlidingPanesPlugin extends Plugin {
   refresh(): void;
 }
 
+// Setting keys are preserved EXACTLY from v3 (including the misspelled
+// `orienation`) so existing users' saved data.json keeps loading unchanged.
 export class SlidingPanesSettings {
   headerWidth: number = 32;
   leafDesktopWidth: number = 700;
@@ -37,7 +41,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Toggle Sliding Panes")
-      .setDesc("Turns sliding panes on or off globally")
+      .setDesc("Turns sliding panes on or off globally. When on, all root tab groups are stacked.")
       .addToggle(toggle => toggle.setValue(!this.plugin.settings.disabled)
         .onChange((value) => {
           this.plugin.settings.disabled = !value;
@@ -52,7 +56,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Smooth Animation')
-      .setDesc('Whether to use smooth animation (on) or snapping (off)')
+      .setDesc('Whether to scroll the active pane into view smoothly (on) or instantly (off)')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.smoothAnimation)
         .onChange((value) => {
           this.plugin.settings.smoothAnimation = value;
@@ -62,7 +66,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Leaf Auto Width')
-      .setDesc('If on, the width of the pane should fill the available space')
+      .setDesc('If on, each pane widens to fill the available space (minus the other panes\' spines)')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.leafAutoWidth)
         .onChange((value) => {
           this.plugin.settings.leafAutoWidth = value;
@@ -94,7 +98,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Toggle rotated headers")
-      .setDesc("Rotates headers to use as spines")
+      .setDesc("When on, the note title is shown on each collapsed spine. When off, the spine stays but its title and icon are hidden.")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.rotateHeaders)
         .onChange((value) => {
           this.plugin.settings.rotateHeaders = value;
@@ -104,7 +108,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Swap rotated header direction")
-      .setDesc("Swaps the direction of rotated headers")
+      .setDesc("Flips the direction the spine title text reads")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.headerAlt)
         .onChange((value) => {
           this.plugin.settings.headerAlt = value;
@@ -128,7 +132,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Toggle stacking")
-      .setDesc("Panes will stack up to the left and right")
+      .setDesc("When on, panes stack against the edges (native stacked tabs). When off, panes slide off-screen (classic mode).")
       .addToggle(toggle => toggle.setValue(this.plugin.settings.stackingEnabled)
         .onChange((value) => {
           this.plugin.settings.stackingEnabled = value;
@@ -169,6 +173,42 @@ export class SlidingPanesCommands {
     });
   }
 
+  // Move focus to the pane one position to the left (direction -1) or right (+1)
+  // of the currently active pane, in root-leaf order.
+  focusAdjacentLeaf(direction: number) {
+    const workspace = this.plugin.app.workspace;
+
+    const activeLeaf = workspace.getMostRecentLeaf();
+    if (!activeLeaf) {
+      return;
+    }
+
+    // Build the ordered list of panes in the same window area as the active
+    // leaf (its root). Comparing roots keeps sidebar leaves out and makes the
+    // commands work inside popout windows too, where iterateRootLeaves
+    // (main window only) would come up empty.
+    const activeRoot = activeLeaf.getRoot();
+    const rootLeaves: WorkspaceLeaf[] = [];
+    workspace.iterateAllLeaves((leaf: WorkspaceLeaf) => {
+      if (leaf.getRoot() === activeRoot) {
+        rootLeaves.push(leaf);
+      }
+    });
+
+    const activeIndex = rootLeaves.indexOf(activeLeaf);
+    if (activeIndex === -1) {
+      return;
+    }
+
+    const targetIndex = activeIndex + direction;
+    if (targetIndex < 0 || targetIndex >= rootLeaves.length) {
+      return; // already at the edge
+    }
+
+    const targetLeaf = rootLeaves[targetIndex];
+    workspace.setActiveLeaf(targetLeaf, { focus: true });
+  }
+
   addCommands(): void {
     // add the toggle on/off command
     this.plugin.addCommand({
@@ -189,7 +229,7 @@ export class SlidingPanesCommands {
 
     // add a command to toggle leaf auto width
     this.addToggleSettingCommand('toggle-sliding-panes-leaf-auto-width', 'Toggle Leaf Auto Width', 'leafAutoWidth');
-    
+
     // add a command to toggle stacking
     this.addToggleSettingCommand('toggle-sliding-panes-stacking', 'Toggle Stacking', 'stackingEnabled');
 
@@ -198,5 +238,23 @@ export class SlidingPanesCommands {
 
     // add a command to toggle swapped header direction
     this.addToggleSettingCommand('toggle-sliding-panes-header-alt', 'Swap rotated header direction', 'headerAlt');
+
+    // move focus to the pane on the left
+    this.plugin.addCommand({
+      id: 'focus-left-pane',
+      name: 'Focus Left Pane',
+      callback: () => {
+        this.focusAdjacentLeaf(-1);
+      }
+    });
+
+    // move focus to the pane on the right
+    this.plugin.addCommand({
+      id: 'focus-right-pane',
+      name: 'Focus Right Pane',
+      callback: () => {
+        this.focusAdjacentLeaf(1);
+      }
+    });
   }
 }

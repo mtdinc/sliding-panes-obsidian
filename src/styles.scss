@@ -1,132 +1,57 @@
-body.plugin-sliding-panes .workspace>.mod-root {
-    overflow-x: auto;
-    overflow-y: hidden;
+/* Sliding Panes v4 — static rules keyed off the body classes that
+   style-manager.ts toggles. Obsidian's native Stacked Tabs owns the core
+   layout; these rules only fill the gaps it leaves.
 
-    &>.workspace-tabs {
-        display: block;
-        flex: none;
+   The v3 body-class names are kept intact so existing user CSS snippets that
+   target them keep working. */
 
-        .workspace-leaf {
-            position: relative;
-        }
+/* rotate-header ON is the native stacked-tabs look, so it needs no rules here.
+
+   rotate-header OFF: keep each spine in place but hide its title text and icon,
+   giving a minimal spine. (Community-verified selectors.) */
+body.plugin-sliding-panes:not(.plugin-sliding-panes-rotate-header) {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {
+    .workspace-tab-header-inner-title {
+      width: 0;
     }
-
-    &>.workspace-split {
-        flex: none;
+    .workspace-tab-header-inner-icon {
+      display: none;
     }
-
-}
-body.plugin-sliding-panes-stacking .workspace>.mod-root>.workspace-tabs,
-body.plugin-sliding-panes-stacking .workspace>.mod-root>.workspace-split {
-    box-shadow: 0px 0px 20px 20px rgba(0, 0, 0, 0.25);
-    position: sticky;
-}
-body.plugin-sliding-panes-rotate-header .workspace>.mod-root>.workspace-leaf,
-body.plugin-sliding-panes-rotate-header .workspace>.mod-root>.workspace-split {
-    /* first we'll add a bit of gap for the spines */
-    &>.workspace-leaf-content {
-        padding-left: var(--header-width);
-        /* this is where the magic happens */
-        &>.view-header {
-            writing-mode: vertical-lr;
-            text-orientation: sideways;
-            border-right: 1px solid var(--background-secondary-alt);
-            border-left: 2px solid var(--background-secondary-alt);
-            border-top: none;
-            border-bottom: none;
-            width: var(--header-width);
-            height: auto;
-            position: absolute;
-            left:0;
-            top:0;
-            bottom:0;
-
-            /* unset the title container height and swap padding */
-            &>.view-header-title-container {
-                height: unset;
-                padding-left: unset;
-                padding-top: 0;
-                
-                /* get rid of unnecessary padding */
-                &>.view-header-title {
-                    padding-right: 0;
-                    padding-top: 15px;
-                    padding-bottom: 15px;
-                }
-
-                /* fix the long-title-obscuring shadows */
-                &:after {
-                    width: 100%;
-                    height: 15px;
-                    top: unset;
-                    bottom: 0;
-                    background: linear-gradient(to bottom, transparent, var(--background-primary-alt));
-                }
-                &:before {
-                    content:'';
-                    position: absolute;
-                    width: 100%;
-                    height: 15px;
-                    top: 0;
-                    bottom: unset;
-                    background: linear-gradient(to top, transparent, var(--background-primary-alt));
-                }
-            }
-
-            /* swap the padding/margin around for the header and actions icons */
-            .view-header-icon,
-            .view-actions {
-                padding: 0;
-            }
-
-            .view-header-icon {
-                margin: 8px auto 3px auto;
-            }
-        
-            .view-action {
-                margin: 8px auto;
-            }
-        }
-    
-    
-        /* get rid of the gap left by the now-missing horizontal title */
-        &>.view-content {
-            height: 100%;
-        }
-    }
-
-
-    /* active titles have different border colours */
-    &.mod-active>.workspace-leaf-content>.view-header {
-        border-right: 2px solid var(--interactive-accent);
-        border-bottom: none;
-        &>.view-header-title-container:after {
-            background: linear-gradient(to bottom, transparent, var(--background-primary));
-        }
-        &>.view-header-title-container:before {
-            background: linear-gradient(to top, transparent, var(--background-primary));
-        }
-    }
-}
-body.plugin-sliding-panes-rotate-header.plugin-sliding-panes-header-alt .workspace>.mod-root>.workspace-leaf>.workspace-leaf-content>.view-header {
-    .view-header-title-container {
-        transform: rotate(180deg);
-        text-align: right;
-        margin-top: 10px;
-    }
-}
-                
-body.plugin-sliding-panes-rotate-header.plugin-sliding-select-orientation {
-    $selector: ".workspace>.mod-root>.workspace-leaf>.workspace-leaf-content>.view-header";
-
-    &-sideway #{$selector} {
-        text-orientation: sideways !important;
-    }
-    &-mixed #{$selector} {
-        text-orientation: mixed !important;
-    }
-    &-upright #{$selector} {
-        text-orientation: upright !important;
-    }
+  }
 }
 
+/* header-alt: flip the direction the spine title text reads (kepano's pattern).
+   These are the CSS variables the native stacked header consumes. */
+body.plugin-sliding-panes.plugin-sliding-panes-header-alt {
+  .mod-root .workspace-tabs.mod-stacked {
+    --tab-stacked-text-transform: rotate(180deg);
+    --tab-stacked-text-align: right;
+  }
+}
+
+/* Spine title text orientation. mixed = the native default, so no rule. */
+body.plugin-sliding-select-orientation-upright {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container .workspace-tab-header-inner-title {
+    text-orientation: upright;
+  }
+}
+body.plugin-sliding-select-orientation-sideway {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container .workspace-tab-header-inner-title {
+    writing-mode: sideways-lr;
+  }
+}
+
+/* stacking OFF = classic "slide-off" mode: converting native sticky stacking
+   into panes that slide off-screen by removing the sticky positioning. */
+body.plugin-sliding-panes:not(.plugin-sliding-panes-stacking) {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container > * {
+    position: static;
+  }
+}
+
+/* smoothAnimation: smooth scrolling for the stacked tab container. */
+body.plugin-sliding-panes.plugin-sliding-panes-smooth {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {
+    scroll-behavior: smooth;
+  }
+}
