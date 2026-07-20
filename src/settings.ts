@@ -15,14 +15,14 @@ declare class SlidingPanesPlugin extends Plugin {
 // `orienation`) so existing users' saved data.json keeps loading unchanged.
 export class SlidingPanesSettings {
   headerWidth: number = 32;
-  leafDesktopWidth: number = 700;
+  leafDesktopWidth: number = 550;
   leafMobileWidth: number = 350;
   leafAutoWidth: boolean = false;
   disabled: boolean = false;
   rotateHeaders: boolean = true;
   headerAlt: boolean = false;
   orienation: Orientation = "mixed";
-  stackingEnabled: boolean = false;
+  stackingEnabled: boolean = true;
   smoothAnimation: boolean = true;
 }
 
