@@ -17,7 +17,7 @@ export class SlidingPanesSettings {
   headerWidth: number = 32;
   leafDesktopWidth: number = 550;
   leafMobileWidth: number = 350;
-  leafAutoWidth: boolean = false;
+  leafAutoWidth: boolean = true;
   disabled: boolean = false;
   rotateHeaders: boolean = true;
   headerAlt: boolean = false;
@@ -66,7 +66,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Leaf Auto Width')
-      .setDesc('If on, each pane widens to fill the available space (minus the other panes\' spines)')
+      .setDesc('If on, panes share the screen equally (1 pane full width, 2 split in half, and so on) and never shrink below the width setting — beyond that they stack. If off, every pane is exactly the width setting.')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.leafAutoWidth)
         .onChange((value) => {
           this.plugin.settings.leafAutoWidth = value;
@@ -76,8 +76,8 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Leaf Width on Desktop')
-      .setDesc('The width of a single pane (only if auto width is off)')
-      .addText(text => text.setPlaceholder('Example: 700')
+      .setDesc('Pane width: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off')
+      .addText(text => text.setPlaceholder('Example: 550')
         .setValue((this.plugin.settings.leafDesktopWidth || '') + '')
         .onChange((value) => {
           this.plugin.settings.leafDesktopWidth = parseInt(value.trim());

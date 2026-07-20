@@ -9,12 +9,10 @@ import { TabGroupLike, getRootTabGroups, getTabContainer, isStacked } from './ad
 // to control pane width is to set inline width/minWidth/maxWidth ourselves.
 // ---------------------------------------------------------------------------
 
-// Auto-width never shrinks a pane below this, so at least one pane is readable
-// even when many tabs are stacked.
-const MIN_AUTO_PANE_WIDTH = 200;
-
-// The desktop/mobile fixed width for a single pane. Exported so style-manager
-// uses the same rule — this function is the ONE owner of the platform choice.
+// The desktop/mobile pane width setting. In fixed mode this IS the pane width;
+// in auto mode it is the floor a pane never shrinks below. Exported so
+// style-manager uses the same rule — this function is the ONE owner of the
+// platform choice.
 export function getFixedWidth(settings: SlidingPanesSettings): number {
   if (Platform.isDesktop) {
     return settings.leafDesktopWidth;
@@ -43,23 +41,26 @@ function getLeafElements(tabContainer: HTMLElement): HTMLElement[] {
   return leafElements;
 }
 
-// In auto-width mode, a pane fills the group minus the space taken by the other
-// panes' collapsed spines: clientWidth - (numTabHeaders - 1) * headerWidth.
-function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, headerWidth: number): number {
+// In auto-width mode, panes share the group's width equally: each of the N
+// panes gets clientWidth / N minus its own spine. One pane fills the screen,
+// two split it in half, three in thirds — until the divided width would drop
+// below the fixed width setting, which acts as the floor. At the floor, panes
+// overflow the group and the stacking/sliding behavior takes over.
+function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, settings: SlidingPanesSettings): number {
   const tabHeaders = tabContainer.querySelectorAll('.workspace-tab-header');
-  const numTabHeaders = tabHeaders.length;
+  const numPanes = Math.max(tabHeaders.length, 1);
 
-  const numOtherSpines = Math.max(numTabHeaders - 1, 0);
-  const spinesWidth = numOtherSpines * headerWidth;
+  const widthPerPane = group.containerEl.clientWidth / numPanes;
+  const dividedWidth = Math.floor(widthPerPane - settings.headerWidth);
 
-  const availableWidth = group.containerEl.clientWidth - spinesWidth;
-  return Math.max(MIN_AUTO_PANE_WIDTH, availableWidth);
+  const minimumWidth = getFixedWidth(settings);
+  return Math.max(dividedWidth, minimumWidth);
 }
 
 // The target width (px) for panes in one stacked group.
 function computeTargetWidth(group: TabGroupLike, tabContainer: HTMLElement, settings: SlidingPanesSettings): number {
   if (settings.leafAutoWidth) {
-    return computeAutoWidth(group, tabContainer, settings.headerWidth);
+    return computeAutoWidth(group, tabContainer, settings);
   }
   return getFixedWidth(settings);
 }
