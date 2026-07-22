@@ -24,6 +24,7 @@ export class SlidingPanesSettings {
   orienation: Orientation = "mixed";
   stackingEnabled: boolean = true;
   smoothAnimation: boolean = true;
+  hoverPeek: boolean = true;
 }
 
 export class SlidingPanesSettingTab extends PluginSettingTab {
@@ -141,6 +142,16 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Hover Peek')
+      .setDesc('When on, hovering a collapsed pane\'s spine briefly lifts that pane above the stack so you can glance at its content (stacking mode only)')
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.hoverPeek)
+        .onChange((value) => {
+          this.plugin.settings.hoverPeek = value;
+          this.plugin.saveData(this.plugin.settings);
+          this.plugin.refresh();
+        }));
+
+    new Setting(containerEl)
       .setName('Spine Width')
       .setDesc('The width of the rotated header (or gap) for stacking')
       .addText(text => text.setPlaceholder('Example: 32')
@@ -232,6 +243,9 @@ export class SlidingPanesCommands {
 
     // add a command to toggle stacking
     this.addToggleSettingCommand('toggle-sliding-panes-stacking', 'Toggle Stacking', 'stackingEnabled');
+
+    // add a command to toggle hover peek
+    this.addToggleSettingCommand('toggle-sliding-panes-hover-peek', 'Toggle Hover Peek', 'hoverPeek');
 
     // add a command to toggle rotated headers
     this.addToggleSettingCommand('toggle-sliding-panes-rotated-headers', 'Toggle Rotated Headers', 'rotateHeaders');

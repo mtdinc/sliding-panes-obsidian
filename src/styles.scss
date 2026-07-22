@@ -49,6 +49,21 @@ body.plugin-sliding-panes:not(.plugin-sliding-panes-stacking) {
   }
 }
 
+/* hover peek: a buried pane lifted above the stack (class added by
+   peek-manager on spine hover). Native stacked tabs paint by DOM order with
+   no inline z-index, so raising z-index here is enough to lift the pane; its
+   own sticky offset keeps it pinned in place. */
+body.plugin-sliding-panes.plugin-sliding-panes-stacking {
+  .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {
+    > .workspace-leaf.sliding-panes-peek {
+      z-index: 10;
+      box-shadow:
+        0 0 0 1px var(--background-modifier-border),
+        0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+  }
+}
+
 /* smoothAnimation: smooth scrolling for the stacked tab container. */
 body.plugin-sliding-panes.plugin-sliding-panes-smooth {
   .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {

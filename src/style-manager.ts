@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { SlidingPanesSettings, Orientation } from './settings';
-import { getRootTabGroups } from './adapter';
+import { collectDocuments } from './adapter';
 import { getFixedWidth } from './width-manager';
 
 // ---------------------------------------------------------------------------
@@ -27,22 +27,6 @@ const ALL_BODY_CLASSES = [
   'plugin-sliding-select-orientation-upright',
   'plugin-sliding-select-orientation-sideway',
 ];
-
-// Collect every document we need to style: the main window, plus any popout
-// windows (reached via their tab groups' ownerDocument).
-function collectDocuments(app: App): Document[] {
-  const documents: Document[] = [document];
-
-  const groups = getRootTabGroups(app);
-  groups.forEach((group) => {
-    const groupDocument = group.containerEl.ownerDocument;
-    if (groupDocument && !documents.includes(groupDocument)) {
-      documents.push(groupDocument);
-    }
-  });
-
-  return documents;
-}
 
 // The three orientation classes are mutually exclusive; only one is on.
 function applyOrientationClass(body: HTMLElement, orientation: Orientation): void {

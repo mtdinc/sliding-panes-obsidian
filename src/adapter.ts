@@ -63,6 +63,24 @@ export function getRootTabGroups(app: App): TabGroupLike[] {
   return groups;
 }
 
+// Every document the workspace spans: the main window, plus any popout
+// windows (reached via their tab groups' ownerDocument). Popouts are separate
+// documents, which is why anything styling or listening on "the DOM" must
+// enumerate documents through this instead of assuming the global one.
+export function collectDocuments(app: App): Document[] {
+  const documents: Document[] = [document];
+
+  const groups = getRootTabGroups(app);
+  groups.forEach((group) => {
+    const groupDocument = group.containerEl.ownerDocument;
+    if (groupDocument && !documents.includes(groupDocument)) {
+      documents.push(groupDocument);
+    }
+  });
+
+  return documents;
+}
+
 // Is this tab group currently in native stacked mode?
 export function isStacked(group: TabGroupLike): boolean {
   return group.containerEl.hasClass('mod-stacked');

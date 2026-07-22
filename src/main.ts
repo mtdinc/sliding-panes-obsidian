@@ -4,6 +4,7 @@ import { getRootTabGroups, setStacked, requestLayoutRecompute, TabGroupLike } fr
 import * as styleManager from './style-manager';
 import * as widthManager from './width-manager';
 import * as scrollManager from './scroll-manager';
+import * as peekManager from './peek-manager';
 
 // How long to wait after the last resize event before recalculating widths.
 const RESIZE_DEBOUNCE_MS = 100;
@@ -61,6 +62,7 @@ export default class SlidingPanesPlugin extends Plugin {
     styleManager.apply(this.app, this.settings);
     this.stackAllGroups();
     widthManager.recalcWidths(this.app, this.settings);
+    peekManager.attach(this.app, this.settings);
     this.registerEventHandlers();
     this.nudgeNativeLayout();
   };
@@ -72,6 +74,7 @@ export default class SlidingPanesPlugin extends Plugin {
       window.clearTimeout(this.resizeTimer);
       this.resizeTimer = null;
     }
+    peekManager.detach();
     styleManager.remove(this.app);
     widthManager.clearWidths(this.app);
     // We blanked our inline min/max widths above; have Obsidian recompute its
@@ -87,6 +90,11 @@ export default class SlidingPanesPlugin extends Plugin {
     }
     styleManager.apply(this.app, this.settings);
     widthManager.recalcWidths(this.app, this.settings);
+    // Drop any live peek before re-attaching: a toggle that turns hoverPeek or
+    // stacking off mid-peek would otherwise leave the lifted pane stuck (the
+    // handler's own guards stop it from ever reaching its hide path).
+    peekManager.clearNow();
+    peekManager.attach(this.app, this.settings);
     this.nudgeNativeLayout();
   };
 
@@ -158,6 +166,10 @@ export default class SlidingPanesPlugin extends Plugin {
     styleManager.apply(this.app, this.settings);
     this.stackAllGroups();
     widthManager.recalcWidths(this.app, this.settings);
+    // A layout change can detach the peeked elements; drop any active peek and
+    // re-attach listeners so newly opened popout windows are covered too.
+    peekManager.clearNow();
+    peekManager.attach(this.app, this.settings);
   };
 
   // Window/pane resized: recalc widths, debounced so we don't thrash.
@@ -183,6 +195,9 @@ export default class SlidingPanesPlugin extends Plugin {
     if (this.settings.disabled || !leaf) {
       return;
     }
+    // Activating a tab (e.g. by clicking a peeked spine) scrolls it fully into
+    // view, so the lifted-pane look must not linger.
+    peekManager.clearNow();
     scrollManager.scrollLeafIntoView(this.app, this.settings, leaf);
   };
 }
