@@ -25,6 +25,9 @@ export class SlidingPanesSettings {
   stackingEnabled: boolean = true;
   smoothAnimation: boolean = true;
   hoverPeek: boolean = true;
+  pinButtons: boolean = true;
+  edgeReveal: boolean = true;
+  edgeRevealWidth: number = 140;
 }
 
 export class SlidingPanesSettingTab extends PluginSettingTab {
@@ -143,10 +146,49 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Hover Peek')
-      .setDesc('When on, hovering a collapsed pane\'s spine briefly lifts that pane above the stack so you can glance at its content (stacking mode only)')
+      .setDesc('When on, hovering a collapsed pane\'s spine (or a revealed content strip) briefly lifts that full pane above the stack (stacking mode only)')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.hoverPeek)
         .onChange((value) => {
           this.plugin.settings.hoverPeek = value;
+          this.plugin.saveData(this.plugin.settings);
+          this.plugin.refresh();
+        }));
+
+    new Setting(containerEl)
+      .setName('Edge Reveal')
+      .setDesc('When on, the nearest buried pane on the left always shows a strip of its content next to the spines, so you can see what\'s there without hovering (stacking mode only)')
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.edgeReveal)
+        .onChange((value) => {
+          this.plugin.settings.edgeReveal = value;
+          this.plugin.saveData(this.plugin.settings);
+          this.plugin.refresh();
+        }));
+
+    new Setting(containerEl)
+      .setName('Edge Reveal Width')
+      .setDesc('How wide the revealed content strip is, in pixels')
+      .addText(text => text.setPlaceholder('Example: 140')
+        .setValue((this.plugin.settings.edgeRevealWidth || '') + '')
+        .onChange((value) => {
+          // A NaN here would flow into clip-path and width math (this fires
+          // per keystroke, including on an empty field), so fall back to the
+          // default until the input is a real number.
+          const parsedWidth = parseInt(value.trim());
+          if (Number.isFinite(parsedWidth) && parsedWidth >= 0) {
+            this.plugin.settings.edgeRevealWidth = parsedWidth;
+          } else {
+            this.plugin.settings.edgeRevealWidth = 140;
+          }
+          this.plugin.saveData(this.plugin.settings);
+          this.plugin.refresh();
+        }));
+
+    new Setting(containerEl)
+      .setName('Pin Buttons')
+      .setDesc('When on, each spine shows a pin button (on hover, at the bottom). Pinning keeps that pane\'s left half visible above the stack whenever it is buried')
+      .addToggle(toggle => toggle.setValue(this.plugin.settings.pinButtons)
+        .onChange((value) => {
+          this.plugin.settings.pinButtons = value;
           this.plugin.saveData(this.plugin.settings);
           this.plugin.refresh();
         }));
@@ -246,6 +288,12 @@ export class SlidingPanesCommands {
 
     // add a command to toggle hover peek
     this.addToggleSettingCommand('toggle-sliding-panes-hover-peek', 'Toggle Hover Peek', 'hoverPeek');
+
+    // add a command to toggle edge reveal
+    this.addToggleSettingCommand('toggle-sliding-panes-edge-reveal', 'Toggle Edge Reveal', 'edgeReveal');
+
+    // add a command to toggle pin buttons
+    this.addToggleSettingCommand('toggle-sliding-panes-pin-buttons', 'Toggle Pin Buttons', 'pinButtons');
 
     // add a command to toggle rotated headers
     this.addToggleSettingCommand('toggle-sliding-panes-rotated-headers', 'Toggle Rotated Headers', 'rotateHeaders');

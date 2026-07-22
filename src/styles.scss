@@ -49,17 +49,71 @@ body.plugin-sliding-panes:not(.plugin-sliding-panes-stacking) {
   }
 }
 
-/* hover peek: a buried pane lifted above the stack (class added by
-   peek-manager on spine hover). Native stacked tabs paint by DOM order with
-   no inline z-index, so raising z-index here is enough to lift the pane; its
-   own sticky offset keeps it pinned in place. */
+/* Lifted panes (classes added by peek-manager). Native stacked tabs paint by
+   DOM order with no inline z-index, so raising z-index lifts a pane; its own
+   sticky offset keeps it pinned in place.
+
+   Three flavors, declared lowest-priority first so a later class overrides an
+   earlier one on the same leaf (same specificity):
+     reveal (8)  — automatic content strip of the nearest left-buried pane,
+                   clipped via inline --sp-reveal-* variables
+     pinned (9)  — user-pinned pane, clipped to its left half while buried
+     peek  (10)  — full pane on hover; un-clips a revealed/pinned pane */
 body.plugin-sliding-panes.plugin-sliding-panes-stacking {
   .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {
+    > .workspace-leaf.sliding-panes-reveal {
+      z-index: 8;
+      clip-path: inset(0 var(--sp-reveal-right, 0px) 0 var(--sp-reveal-left, 0px));
+      filter: drop-shadow(4px 0 12px rgba(0, 0, 0, 0.35));
+    }
+    > .workspace-leaf.sliding-panes-pin-engaged {
+      z-index: 9;
+      clip-path: inset(0 50% 0 0);
+      filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.45));
+    }
     > .workspace-leaf.sliding-panes-peek {
       z-index: 10;
+      clip-path: none;
+      filter: none;
       box-shadow:
         0 0 0 1px var(--background-modifier-border),
         0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    /* pin button: bottom of each spine, fades in on hover, accent when on.
+       The header is position:sticky (a positioned ancestor), so absolute
+       positioning inside it works without touching its layout. */
+    .workspace-tab-header .sliding-panes-pin-button {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      color: var(--text-muted);
+      opacity: 0;
+      transition: opacity 150ms ease;
+      cursor: pointer;
+
+      svg {
+        width: 14px;
+        height: 14px;
+      }
+    }
+    .workspace-tab-header:hover .sliding-panes-pin-button {
+      opacity: 1;
+    }
+    .workspace-tab-header .sliding-panes-pin-button:hover {
+      color: var(--text-normal);
+      background-color: var(--background-modifier-hover);
+    }
+    .workspace-tab-header .sliding-panes-pin-button.is-pinned {
+      opacity: 1;
+      color: var(--interactive-accent);
     }
   }
 }

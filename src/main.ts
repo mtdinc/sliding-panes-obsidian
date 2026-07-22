@@ -186,6 +186,9 @@ export default class SlidingPanesPlugin extends Plugin {
         return;
       }
       widthManager.recalcWidths(this.app, this.settings);
+      // New widths can change which panes are buried; re-check the edge
+      // reveal strip and pin engagement.
+      peekManager.reevaluate();
     }, RESIZE_DEBOUNCE_MS);
   };
 

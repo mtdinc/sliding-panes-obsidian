@@ -61,8 +61,19 @@ function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, settin
   if (settings.stackingEnabled) {
     // Stacking ON pins ALL spines on screen at all times, so every spine
     // subtracts from the group width before panes divide what's left.
-    const contentWidth = groupWidth - numPanes * spineWidth;
-    const panesThatFit = Math.floor(contentWidth / minimumWidth);
+    let contentWidth = groupWidth - numPanes * spineWidth;
+    let panesThatFit = Math.floor(contentWidth / minimumWidth);
+
+    // Once panes overflow into stacking, peek-manager shows the nearest
+    // buried pane as an edge-reveal strip next to the spines. Reserve its
+    // room so the strip sits in its own space instead of covering the
+    // visible panes. (No overflow → nothing buried → no strip.)
+    const panesOverflow = panesThatFit < numPanes;
+    if (settings.edgeReveal && panesOverflow) {
+      contentWidth = contentWidth - settings.edgeRevealWidth;
+      panesThatFit = Math.floor(contentWidth / minimumWidth);
+    }
+
     const visiblePanes = Math.min(Math.max(panesThatFit, 1), numPanes);
     const dividedWidth = Math.floor(contentWidth / visiblePanes);
     return Math.max(dividedWidth, minimumWidth);

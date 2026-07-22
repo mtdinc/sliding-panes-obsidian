@@ -83,6 +83,12 @@ function applyScroll(container: HTMLElement, leafElement: HTMLElement, settings:
   if (settings.stackingEnabled) {
     leftInset = (leafIndex + 1) * headerWidth;
     rightInset = (leafCount - 1 - leafIndex) * headerWidth;
+    // When a pane is buried to our left, peek-manager shows its edge-reveal
+    // strip right after the spines; park the active pane past the strip so
+    // the two don't overlap.
+    if (settings.edgeReveal && leafIndex > 0) {
+      leftInset += settings.edgeRevealWidth;
+    }
   } else {
     leftInset = headerWidth;
     rightInset = 0;
