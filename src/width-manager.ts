@@ -41,19 +41,41 @@ function getLeafElements(tabContainer: HTMLElement): HTMLElement[] {
   return leafElements;
 }
 
-// In auto-width mode, panes share the group's width equally: each of the N
-// panes gets clientWidth / N minus its own spine. One pane fills the screen,
-// two split it in half, three in thirds — until the divided width would drop
-// below the fixed width setting, which acts as the floor. At the floor, panes
-// overflow the group and the stacking/sliding behavior takes over.
+// In auto-width mode, the panes that fit on screen tile it exactly: work out
+// how many panes can be fully visible without shrinking below the fixed-width
+// floor, then split the available space evenly among exactly that many. When
+// every pane fits this is plain equal distribution (1 pane full width, 2 split
+// in half, ...); once panes overflow into stacking, the visible panes still
+// sit flush against the spines instead of leaving an arbitrary sliver or gap.
 function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, settings: SlidingPanesSettings): number {
   const tabHeaders = tabContainer.querySelectorAll('.workspace-tab-header');
   const numPanes = Math.max(tabHeaders.length, 1);
-
-  const widthPerPane = group.containerEl.clientWidth / numPanes;
-  const dividedWidth = Math.floor(widthPerPane - settings.headerWidth);
-
+  const groupWidth = group.containerEl.clientWidth;
   const minimumWidth = getFixedWidth(settings);
+  const spineWidth = settings.headerWidth;
+
+  // The spine accounting differs by mode. In both branches the "visible pane"
+  // count is clamped: at least one pane is always visible, and we never spread
+  // wider than the number of panes that actually exist.
+
+  if (settings.stackingEnabled) {
+    // Stacking ON pins ALL spines on screen at all times, so every spine
+    // subtracts from the group width before panes divide what's left.
+    const contentWidth = groupWidth - numPanes * spineWidth;
+    const panesThatFit = Math.floor(contentWidth / minimumWidth);
+    const visiblePanes = Math.min(Math.max(panesThatFit, 1), numPanes);
+    const dividedWidth = Math.floor(contentWidth / visiblePanes);
+    return Math.max(dividedWidth, minimumWidth);
+  }
+
+  // Stacking OFF (slide-off) scrolls spines with their panes, so only the
+  // spines of the panes actually on screen take up room — and never more
+  // spines than panes that exist, or panes would come out too narrow and
+  // leave a gap on wide screens.
+  const panesThatFit = Math.floor(groupWidth / (minimumWidth + spineWidth));
+  const visiblePanes = Math.min(Math.max(panesThatFit, 1), numPanes);
+  const contentWidth = groupWidth - visiblePanes * spineWidth;
+  const dividedWidth = Math.floor(contentWidth / visiblePanes);
   return Math.max(dividedWidth, minimumWidth);
 }
 
