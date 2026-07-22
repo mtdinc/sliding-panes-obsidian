@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 
 export type Orientation = "sideway" | "mixed" | "upright"
 
@@ -30,6 +30,18 @@ export class SlidingPanesSettings {
   edgeRevealWidth: number = 140;
 }
 
+// Parse a numeric text field; fall back to `fallback` while the input isn't
+// a real number. These handlers fire per keystroke (including on a freshly
+// emptied field), and a NaN stored here flows into width/clip math AND gets
+// persisted (JSON turns NaN into null, which then survives restarts).
+function parseIntOr(value: string, fallback: number): number {
+  const parsed = parseInt(value.trim());
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
 export class SlidingPanesSettingTab extends PluginSettingTab {
 
   plugin: SlidingPanesPlugin;
@@ -42,6 +54,14 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
     let { containerEl } = this;
 
     containerEl.empty();
+
+    // Native stacked tabs don't exist on phones, so the whole plugin no-ops
+    // there; say so instead of showing settings that silently do nothing.
+    if (Platform.isPhone) {
+      containerEl.createEl('p', {
+        text: 'Note: stacked tabs are not available on phones, so Sliding Panes has no effect here. These settings apply on desktop and tablet.',
+      });
+    }
 
     new Setting(containerEl)
       .setName("Toggle Sliding Panes")
@@ -60,7 +80,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Smooth Animation')
-      .setDesc('Whether to scroll the active pane into view smoothly (on) or instantly (off)')
+      .setDesc('Whether pane movements (scrolling into view, peek grow/shrink) animate smoothly (on) or happen instantly (off)')
       .addToggle(toggle => toggle.setValue(this.plugin.settings.smoothAnimation)
         .onChange((value) => {
           this.plugin.settings.smoothAnimation = value;
@@ -84,18 +104,18 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
       .addText(text => text.setPlaceholder('Example: 550')
         .setValue((this.plugin.settings.leafDesktopWidth || '') + '')
         .onChange((value) => {
-          this.plugin.settings.leafDesktopWidth = parseInt(value.trim());
+          this.plugin.settings.leafDesktopWidth = parseIntOr(value, 550);
           this.plugin.saveData(this.plugin.settings);
           this.plugin.refresh();
         }));
 
     new Setting(containerEl)
       .setName('Leaf Width on Mobile')
-      .setDesc('The width of a single pane (only if auto width is off)')
+      .setDesc('Pane width on mobile: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off')
       .addText(text => text.setPlaceholder('Example: 350')
         .setValue((this.plugin.settings.leafMobileWidth || '') + '')
         .onChange((value) => {
-          this.plugin.settings.leafMobileWidth = parseInt(value.trim());
+          this.plugin.settings.leafMobileWidth = parseIntOr(value, 350);
           this.plugin.saveData(this.plugin.settings);
           this.plugin.refresh();
         }));
@@ -170,15 +190,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
       .addText(text => text.setPlaceholder('Example: 140')
         .setValue((this.plugin.settings.edgeRevealWidth || '') + '')
         .onChange((value) => {
-          // A NaN here would flow into clip-path and width math (this fires
-          // per keystroke, including on an empty field), so fall back to the
-          // default until the input is a real number.
-          const parsedWidth = parseInt(value.trim());
-          if (Number.isFinite(parsedWidth) && parsedWidth >= 0) {
-            this.plugin.settings.edgeRevealWidth = parsedWidth;
-          } else {
-            this.plugin.settings.edgeRevealWidth = 140;
-          }
+          this.plugin.settings.edgeRevealWidth = parseIntOr(value, 140);
           this.plugin.saveData(this.plugin.settings);
           this.plugin.refresh();
         }));
@@ -199,7 +211,7 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
       .addText(text => text.setPlaceholder('Example: 32')
         .setValue((this.plugin.settings.headerWidth || '') + '')
         .onChange((value) => {
-          this.plugin.settings.headerWidth = parseInt(value.trim());
+          this.plugin.settings.headerWidth = parseIntOr(value, 32);
           this.plugin.saveData(this.plugin.settings);
           this.plugin.refresh();
         }));

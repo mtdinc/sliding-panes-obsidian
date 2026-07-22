@@ -48,7 +48,10 @@ stack up as you scroll (also optional), allowing easy navigation between them.
 - Edge reveal: the nearest buried pane always shows a strip of its content
   next to the spines; hover the strip to grow it to the full pane
 - Pin buttons on the spines: keep a specific pane's left half visible above
-  the stack while it's buried
+  the stack while it's buried (also via the "Toggle pin on current pane"
+  command — handy on touch screens, where the hover button can't appear)
+- Clicking a buried pane keeps it lifted above the stack while it scrolls
+  into view, so it never flashes or disappears mid-scroll
 - In auto-width mode, visible panes tile the screen exactly — no slivers or
   dead gaps once stacking begins
 - Togglable without copying CSS into your theme

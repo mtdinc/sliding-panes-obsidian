@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, WorkspaceLeaf } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // adapter.ts is the SOLE owner of Obsidian's private / untyped internals.
@@ -123,6 +123,18 @@ export function requestLayoutRecompute(group: TabGroupLike): void {
 // The DOM element for a leaf (untyped on WorkspaceLeaf), or null if absent.
 export function leafEl(leaf: unknown): HTMLElement | null {
   return (leaf as any).containerEl ?? null;
+}
+
+// The WorkspaceLeaf that owns this leaf element, or null — the reverse of
+// leafEl(). iterateAllLeaves covers the main window, popouts, and sidebars.
+export function leafForElement(app: App, leafElement: HTMLElement): WorkspaceLeaf | null {
+  let found: WorkspaceLeaf | null = null;
+  app.workspace.iterateAllLeaves((leaf) => {
+    if (!found && leafEl(leaf) === leafElement) {
+      found = leaf;
+    }
+  });
+  return found;
 }
 
 // The scrollable `.workspace-tab-container` element inside a tab group, or

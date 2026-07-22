@@ -1,6 +1,6 @@
 import { Platform, Plugin, WorkspaceLeaf } from 'obsidian';
 import { SlidingPanesSettings, SlidingPanesSettingTab, SlidingPanesCommands } from './settings';
-import { getRootTabGroups, setStacked, requestLayoutRecompute, TabGroupLike } from './adapter';
+import { getRootTabGroups, leafEl, setStacked, requestLayoutRecompute, TabGroupLike } from './adapter';
 import * as styleManager from './style-manager';
 import * as widthManager from './width-manager';
 import * as scrollManager from './scroll-manager';
@@ -35,13 +35,38 @@ export default class SlidingPanesPlugin extends Plugin {
 
   onload = async () => {
     this.settings = Object.assign(new SlidingPanesSettings(), await this.loadData());
+    this.sanitizeSettings();
 
     this.addSettingTab(new SlidingPanesSettingTab(this.app, this));
     new SlidingPanesCommands(this).addCommands();
 
+    // Pin/unpin via command: the spine pin button only appears on hover, so
+    // touch screens and keyboard users need this path.
+    this.addCommand({
+      id: 'toggle-pin-current-pane',
+      name: 'Toggle pin on current pane',
+      callback: () => {
+        peekManager.togglePinForActiveLeaf(this.app, this.settings);
+      },
+    });
+
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings.disabled) {
         this.enable();
+      }
+    });
+  };
+
+  // Older versions could persist NaN for numeric fields (JSON stores it as
+  // null, which Object.assign then copies over the default). Reset any
+  // non-finite numeric setting to its default so a corrupted data.json heals
+  // on the next launch.
+  private sanitizeSettings = () => {
+    const defaults = new SlidingPanesSettings();
+    const numericKeys = ['headerWidth', 'leafDesktopWidth', 'leafMobileWidth', 'edgeRevealWidth'] as const;
+    numericKeys.forEach((key) => {
+      if (!Number.isFinite(this.settings[key])) {
+        this.settings[key] = defaults[key];
       }
     });
   };
@@ -166,9 +191,11 @@ export default class SlidingPanesPlugin extends Plugin {
     styleManager.apply(this.app, this.settings);
     this.stackAllGroups();
     widthManager.recalcWidths(this.app, this.settings);
-    // A layout change can detach the peeked elements; drop any active peek and
-    // re-attach listeners so newly opened popout windows are covered too.
-    peekManager.clearNow();
+    // A layout change can detach the elements a peek/landing sits on; drop
+    // only those (unrelated churn — sidebar toggles, a deferred view loading —
+    // must not kill a live lift). Also re-attach listeners so newly opened
+    // popout windows are covered too.
+    peekManager.clearIfDetached();
     peekManager.attach(this.app, this.settings);
   };
 
@@ -198,9 +225,10 @@ export default class SlidingPanesPlugin extends Plugin {
     if (this.settings.disabled || !leaf) {
       return;
     }
-    // Activating a tab (e.g. by clicking a peeked spine) scrolls it fully into
-    // view, so the lifted-pane look must not linger.
-    peekManager.clearNow();
+    // peek-manager drops any hover peek and, if the newly active pane is still
+    // buried, keeps it lifted until the scroll below uncovers it — otherwise
+    // the clicked pane is invisible for the whole scroll animation.
+    peekManager.handleActiveLeafChange(leafEl(leaf));
     scrollManager.scrollLeafIntoView(this.app, this.settings, leaf);
   };
 }
