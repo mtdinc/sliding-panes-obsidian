@@ -45,10 +45,15 @@ stack up as you scroll (also optional), allowing easy navigation between them.
 - Note headers stack up on the right _as well as_ the left
 - Changing the active pane scrolls it into view
 - Hover a collapsed pane's spine to peek at its content without activating it
+- Edge reveal: the nearest buried pane always shows a strip of its content
+  next to the spines; hover the strip to grow it to the full pane
+- Pin buttons on the spines: keep a specific pane's left half visible above
+  the stack while it's buried
 - In auto-width mode, visible panes tile the screen exactly — no slivers or
   dead gaps once stacking begins
 - Togglable without copying CSS into your theme
-- Togglable sub-features: rotated headers, header direction, stacking, hover peek
+- Togglable sub-features: rotated headers, header direction, stacking, hover
+  peek, edge reveal, pin buttons
 
 ## Settings
 
@@ -58,7 +63,10 @@ stack up as you scroll (also optional), allowing easy navigation between them.
 - **Toggle rotated headers** — rotates headers to use as spines *(also via command/hotkey)*
 - **Swap rotated header direction** — swaps the direction of rotated headers *(also via command/hotkey)*
 - **Toggle stacking** — panes stack up to the left and right *(also via command/hotkey)*
-- **Hover Peek** — hovering a collapsed pane's spine briefly lifts that pane above the stack for a quick look *(also via command/hotkey)*
+- **Hover Peek** — hovering a collapsed pane's spine (or revealed strip) briefly lifts that pane above the stack for a quick look *(also via command/hotkey)*
+- **Edge Reveal** — always show a content strip of the nearest buried pane next to the spines *(also via command/hotkey)*
+- **Edge Reveal Width** — how wide the revealed content strip is
+- **Pin Buttons** — show a pin button on each spine; pinning keeps that pane's left half visible while it's buried *(also via command/hotkey)*
 - **Spine Width** — the width of the rotated header (or gap) for stacking
 
 ## Compatibility
