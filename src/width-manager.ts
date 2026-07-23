@@ -1,6 +1,6 @@
 import { App, Platform } from 'obsidian';
 import { SlidingPanesSettings } from './settings';
-import { TabGroupLike, getRootTabGroups, getTabContainer, isStacked } from './adapter';
+import { TabGroupLike, getLeafElements, getRootTabGroups, getTabContainer, isStacked } from './adapter';
 
 // ---------------------------------------------------------------------------
 // width-manager.ts is the SOLE owner of the inline width styles we write onto
@@ -18,27 +18,6 @@ export function getFixedWidth(settings: SlidingPanesSettings): number {
     return settings.leafDesktopWidth;
   }
   return settings.leafMobileWidth;
-}
-
-// Popout windows are separate JavaScript realms, so `instanceof HTMLElement`
-// against THIS window's constructor wrongly fails for their elements. We
-// duck-type on `.style` instead of using instanceof anywhere in this file.
-// (adapter.getTabContainer applies the same rule for the container itself.)
-function isStylableElement(node: unknown): node is HTMLElement {
-  const element = node as HTMLElement | null;
-  return !!element && element.style !== undefined;
-}
-
-// The direct `.workspace-leaf` children of a tab container.
-function getLeafElements(tabContainer: HTMLElement): HTMLElement[] {
-  const nodeList = tabContainer.querySelectorAll(':scope > .workspace-leaf');
-  const leafElements: HTMLElement[] = [];
-  nodeList.forEach((node) => {
-    if (isStylableElement(node)) {
-      leafElements.push(node);
-    }
-  });
-  return leafElements;
 }
 
 // In auto-width mode, the panes that fit on screen tile it exactly: work out
@@ -110,6 +89,15 @@ function applyWidthToGroup(group: TabGroupLike, settings: SlidingPanesSettings):
 
   const leafElements = getLeafElements(tabContainer);
   leafElements.forEach((leafElement) => {
+    // Skip leaves already at the target: this runs on every layout-change and
+    // resize, and rewriting identical values still dirties style.
+    const alreadyAtTarget =
+      leafElement.style.width === targetWidthPx &&
+      leafElement.style.minWidth === targetWidthPx &&
+      leafElement.style.maxWidth === targetWidthPx;
+    if (alreadyAtTarget) {
+      return;
+    }
     leafElement.style.width = targetWidthPx;
     leafElement.style.minWidth = targetWidthPx;
     leafElement.style.maxWidth = targetWidthPx;

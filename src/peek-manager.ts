@@ -1,6 +1,19 @@
 import { App, Notice, setIcon } from 'obsidian';
-import { SlidingPanesSettings } from './settings';
-import { collectDocuments, getRootTabGroups, getTabContainer, isStacked, leafEl, leafForElement, TabGroupLike } from './adapter';
+// Type-only: settings.ts imports this module for the pin command, so a value
+// import here would create a circular runtime dependency.
+import type { SlidingPanesSettings } from './settings';
+import {
+  collectDocuments,
+  getRootTabGroups,
+  getTabContainer,
+  isManagedElement,
+  isStacked,
+  leafEl,
+  leafForElement,
+  leafForHeader,
+  nextLeafSibling,
+  TabGroupLike,
+} from './adapter';
 
 // ---------------------------------------------------------------------------
 // peek-manager.ts is the SOLE owner of interactions that lift a pane above
@@ -58,9 +71,20 @@ const PEEK_SHOW_DELAY_MS = 300;
 // between the spine and the lifted pane doesn't drop the peek.
 const PEEK_HIDE_DELAY_MS = 250;
 
+// Duration of the peek grow/shrink CSS transition. This constant is the ONE
+// owner of that number: style-manager publishes it as --sp-lift-anim-ms and
+// styles.scss consumes the variable, so tuning it here changes both sides.
+export const PEEK_TRANSITION_MS = 200;
+
 // How long the closing class stays on a pane after its peek drops. Slightly
-// longer than the CSS transition (200ms) so the shrink finishes animating.
-const PEEK_CLOSING_MS = 250;
+// longer than the transition so the shrink finishes animating.
+const PEEK_CLOSING_MS = PEEK_TRANSITION_MS + 50;
+
+// How much of a pinned pane stays visible while it is buried. This constant
+// is the ONE owner of that geometry: style-manager publishes the matching
+// clip as --sp-pin-clip-right for styles.scss, and closingDestination() below
+// uses it so a closing peek lands exactly on the pinned clip.
+export const PIN_VISIBLE_FRACTION = 0.5;
 
 // Painted rects closer than this are treated as touching, not overlapping
 // (integer width rounding can leave a stray pixel).
@@ -137,14 +161,10 @@ function finishClosingNow(): void {
   }
 }
 
-// The next `.workspace-leaf` sibling after this element, or null. In stacked
-// mode the container interleaves headers and leaves, so skip non-leaves.
-function nextLeafSibling(element: HTMLElement): HTMLElement | null {
-  let next = element.nextElementSibling;
-  while (next && !next.classList.contains('workspace-leaf')) {
-    next = next.nextElementSibling;
-  }
-  return next as HTMLElement | null;
+// Is the plugin on AND in stacking mode? Every lift feature (peek, reveal,
+// pin) requires this; the per-feature gates below build on it.
+function isStackingActive(settings: SlidingPanesSettings): boolean {
+  return !settings.disabled && settings.stackingEnabled;
 }
 
 // Where does this pane's clip end up once the lift is fully gone? The closing
@@ -159,8 +179,9 @@ function closingDestination(leaf: HTMLElement): { left: number; right: number } 
     return { left, right };
   }
   if (leaf.classList.contains(PIN_ENGAGED_CLASS)) {
-    // Falling back to the pinned left half.
-    return { left: 0, right: leaf.getBoundingClientRect().width / 2 };
+    // Falling back to the pinned visible portion.
+    const hiddenFraction = 1 - PIN_VISIBLE_FRACTION;
+    return { left: 0, right: leaf.getBoundingClientRect().width * hiddenFraction };
   }
   // Plain buried pane: the next pane covers everything from its own left edge
   // rightward. What survives the clip is exactly the sliver that stays
@@ -250,7 +271,7 @@ export function handleActiveLeafChange(activeLeafElement: HTMLElement | null): v
   // must not touch a live peek or landing: the deck scroll that releases them
   // is still running, and cutting the landing mid-scroll re-buries the very
   // pane the user just clicked.
-  if (!settings || settings.disabled || !settings.stackingEnabled) {
+  if (!settings || !isStackingActive(settings)) {
     return;
   }
   if (!isManagedElement(activeLeafElement)) {
@@ -275,24 +296,6 @@ export function handleActiveLeafChange(activeLeafElement: HTMLElement | null): v
     releaseLanding(true);
   }, LANDING_MAX_MS);
   reevaluate();
-}
-
-// Is this element inside a stacked tab group in a root workspace area (main
-// window or popout), not a sidebar.
-function isManagedElement(element: HTMLElement): boolean {
-  const inStackedGroup = element.closest('.workspace-tabs.mod-stacked') !== null;
-  const inRootArea = element.closest('.mod-root') !== null;
-  return inStackedGroup && inRootArea;
-}
-
-// The pane belonging to a spine. In stacked mode the container interleaves
-// header and leaf elements, so the pane is the spine's next element sibling.
-function leafForHeader(header: HTMLElement): HTMLElement | null {
-  const sibling = header.nextElementSibling as HTMLElement | null;
-  if (sibling && sibling.classList.contains('workspace-leaf')) {
-    return sibling;
-  }
-  return null;
 }
 
 // Is any part of this pane painted over by another pane? Stacked panes paint
@@ -411,7 +414,7 @@ function scheduleHide(): void {
 // Popout windows are separate realms, so we duck-type instead of instanceof.
 function handleMouseOver(event: MouseEvent): void {
   const settings = currentSettings;
-  if (!settings || settings.disabled || !settings.stackingEnabled || !settings.hoverPeek) {
+  if (!settings || !isStackingActive(settings) || !settings.hoverPeek) {
     return;
   }
 
@@ -457,6 +460,12 @@ function handleMouseOver(event: MouseEvent): void {
   }
 
   // Pointer is somewhere else entirely.
+  windDownPeek();
+}
+
+// The pointer is no longer over anything peek-related: cancel a pending show
+// and start the hide countdown for a lifted pane.
+function windDownPeek(): void {
   cancelShow();
   if (peekedLeaf) {
     scheduleHide();
@@ -465,10 +474,7 @@ function handleMouseOver(event: MouseEvent): void {
 
 // Pointer left the document (e.g. out of the window): wind the peek down.
 function handleDocumentMouseLeave(): void {
-  cancelShow();
-  if (peekedLeaf) {
-    scheduleHide();
-  }
+  windDownPeek();
 }
 
 // ---------------------------------------------------------------------------
@@ -566,7 +572,7 @@ function evaluateGroupReveal(group: TabGroupLike, settings: SlidingPanesSettings
 function evaluateNow(): void {
   const app = currentApp;
   const settings = currentSettings;
-  const stackingActive = !!app && !!settings && !settings.disabled && settings.stackingEnabled;
+  const stackingActive = !!app && !!settings && isStackingActive(settings);
 
   // Landing: the freshly activated pane stays lifted only while something
   // still covers it. The moment it is fully uncovered (the scroll-into-view
@@ -600,10 +606,10 @@ function evaluateNow(): void {
     });
   });
 
-  // Self-heal: never let a deferred (unrendered) pane sit in a stacked group.
-  // The attach-time preload covers the normal path, but if any timing window
-  // slips past it a pane shows up as a big blank rectangle; this closes that
-  // for good. Cheap: already-loaded leaves fail the isDeferred check.
+  // Never let a deferred (unrendered) pane sit in a stacked group: it shows
+  // up as a big blank rectangle in a reveal strip or peek. Runs on every
+  // evaluation (attach, scroll, layout, resize), so it is the ONE owner of
+  // preloading. Cheap: already-loaded leaves fail the isDeferred check.
   if (stackingActive && app) {
     preloadStackedLeaves(app);
   }
@@ -702,7 +708,7 @@ function togglePin(header: HTMLElement): void {
 // the spine pin button only fades in on hover — unreachable on touch screens
 // and for keyboard / command-palette users.
 export function togglePinForActiveLeaf(app: App, settings: SlidingPanesSettings): void {
-  if (settings.disabled || !settings.stackingEnabled || !settings.pinButtons) {
+  if (!isStackingActive(settings) || !settings.pinButtons) {
     new Notice('Sliding Panes: pinning needs Stacking and Pin Buttons enabled.');
     return;
   }
@@ -769,19 +775,27 @@ function injectPinButtons(app: App): void {
   });
 }
 
-// Remove every pin button and pin/reveal class we ever added, everywhere.
-function removeLiftArtifacts(): void {
+// Remove every pin button and pin class, everywhere. Shared by full artifact
+// removal below and by attach() when the pin feature is toggled off.
+function removePinArtifacts(): void {
   attachedDocuments.forEach((doc) => {
     doc.querySelectorAll('.' + PIN_BUTTON_CLASS).forEach((button) => button.remove());
     doc.querySelectorAll('.' + PIN_STATE_CLASS).forEach((leaf) => {
       leaf.classList.remove(PIN_STATE_CLASS);
       leaf.classList.remove(PIN_ENGAGED_CLASS);
     });
+  });
+  pinnedLeaves.clear();
+}
+
+// Remove every pin button and pin/reveal class we ever added, everywhere.
+function removeLiftArtifacts(): void {
+  removePinArtifacts();
+  attachedDocuments.forEach((doc) => {
     doc.querySelectorAll('.' + REVEAL_CLASS).forEach((leaf) => {
       clearReveal(leaf as HTMLElement);
     });
   });
-  pinnedLeaves.clear();
   revealedLeaves.clear();
 }
 
@@ -812,25 +826,13 @@ export function attach(app: App, settings: SlidingPanesSettings): void {
 
   // Pin buttons only exist in stacking mode: their styling is keyed off the
   // stacking body class, and pins can never engage in slide-off mode anyway.
-  // Pre-render deferred panes whenever any lift feature can show them.
-  const liftsActive = !settings.disabled && settings.stackingEnabled
-    && (settings.edgeReveal || settings.hoverPeek || settings.pinButtons);
-  if (liftsActive) {
-    preloadStackedLeaves(app);
-  }
-
-  if (settings.pinButtons && settings.stackingEnabled) {
+  if (isStackingActive(settings) && settings.pinButtons) {
     injectPinButtons(app);
   } else {
-    attachedDocuments.forEach((doc) => {
-      doc.querySelectorAll('.' + PIN_BUTTON_CLASS).forEach((button) => button.remove());
-      doc.querySelectorAll('.' + PIN_STATE_CLASS).forEach((leaf) => {
-        leaf.classList.remove(PIN_STATE_CLASS);
-        leaf.classList.remove(PIN_ENGAGED_CLASS);
-      });
-    });
-    pinnedLeaves.clear();
+    removePinArtifacts();
   }
+  // The evaluation pass also preloads any deferred panes in stacked groups,
+  // so freshly attached decks render real content, not blank rectangles.
   reevaluate();
 }
 

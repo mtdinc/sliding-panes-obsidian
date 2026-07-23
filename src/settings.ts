@@ -1,4 +1,5 @@
 import { App, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import * as peekManager from './peek-manager';
 
 export type Orientation = "sideway" | "mixed" | "upright"
 
@@ -30,6 +31,16 @@ export class SlidingPanesSettings {
   edgeRevealWidth: number = 140;
 }
 
+// The settings keys that hold booleans / numbers, derived from the class
+// above so the helpers below can only be pointed at a key of the right type
+// — a typo'd or wrongly-typed key becomes a compile error, not a silent bug.
+type BooleanSettingKey = {
+  [K in keyof SlidingPanesSettings]: SlidingPanesSettings[K] extends boolean ? K : never;
+}[keyof SlidingPanesSettings];
+type NumberSettingKey = {
+  [K in keyof SlidingPanesSettings]: SlidingPanesSettings[K] extends number ? K : never;
+}[keyof SlidingPanesSettings];
+
 // Parse a numeric text field; fall back to `fallback` while the input isn't
 // a real number. These handlers fire per keystroke (including on a freshly
 // emptied field), and a NaN stored here flows into width/clip math AND gets
@@ -42,12 +53,75 @@ function parseIntOr(value: string, fallback: number): number {
   return fallback;
 }
 
+// Heal any non-finite numeric setting back to its default. Older versions
+// could persist NaN (JSON stores it as null, which Object.assign then copies
+// over the default). Numeric keys are derived from the defaults instance, so
+// a new numeric setting is covered automatically — no key list to maintain.
+export function sanitizeSettings(settings: SlidingPanesSettings): void {
+  const defaults = new SlidingPanesSettings();
+  const allKeys = Object.keys(defaults) as (keyof SlidingPanesSettings)[];
+  allKeys.forEach((key) => {
+    const defaultValue = defaults[key];
+    if (typeof defaultValue === 'number' && !Number.isFinite(settings[key])) {
+      (settings[key] as number) = defaultValue;
+    }
+  });
+}
+
+// Wait this long after the last keystroke in a numeric field before saving
+// and refreshing — refresh() re-applies styles and widths across every
+// window, far too heavy to run three times while "550" is being typed.
+const NUMERIC_SAVE_DEBOUNCE_MS = 300;
+
 export class SlidingPanesSettingTab extends PluginSettingTab {
 
   plugin: SlidingPanesPlugin;
   constructor(app: App, plugin: SlidingPanesPlugin) {
     super(app, plugin);
     this.plugin = plugin;
+  }
+
+  // Save the settings and re-apply them. Shared by every control below.
+  private saveAndRefresh(): void {
+    this.plugin.saveData(this.plugin.settings);
+    this.plugin.refresh();
+  }
+
+  // A standard on/off setting bound to one boolean settings key.
+  private addToggleSetting(name: string, desc: string, key: BooleanSettingKey): void {
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addToggle(toggle => toggle.setValue(this.plugin.settings[key])
+        .onChange((value) => {
+          this.plugin.settings[key] = value;
+          this.saveAndRefresh();
+        }));
+  }
+
+  // A numeric text setting bound to one numeric settings key. The default —
+  // used as the placeholder and as the fallback for unparseable input — comes
+  // from the settings class itself, so the two can never drift. The value is
+  // applied immediately; saving and refreshing is debounced because onChange
+  // fires per keystroke.
+  private addNumericSetting(name: string, desc: string, key: NumberSettingKey): void {
+    const defaultValue = new SlidingPanesSettings()[key];
+    let saveTimer: number | null = null;
+    new Setting(this.containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addText(text => text.setPlaceholder('Example: ' + defaultValue)
+        .setValue((this.plugin.settings[key] || '') + '')
+        .onChange((value) => {
+          this.plugin.settings[key] = parseIntOr(value, defaultValue);
+          if (saveTimer !== null) {
+            window.clearTimeout(saveTimer);
+          }
+          saveTimer = window.setTimeout(() => {
+            saveTimer = null;
+            this.saveAndRefresh();
+          }, NUMERIC_SAVE_DEBOUNCE_MS);
+        }));
   }
 
   display(): void {
@@ -78,67 +152,29 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
           }
         }));
 
-    new Setting(containerEl)
-      .setName('Smooth Animation')
-      .setDesc('Whether pane movements (scrolling into view, peek grow/shrink) animate smoothly (on) or happen instantly (off)')
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.smoothAnimation)
-        .onChange((value) => {
-          this.plugin.settings.smoothAnimation = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Smooth Animation',
+      'Whether pane movements (scrolling into view, peek grow/shrink) animate smoothly (on) or happen instantly (off)',
+      'smoothAnimation');
 
-    new Setting(containerEl)
-      .setName('Leaf Auto Width')
-      .setDesc('If on, panes share the screen equally (1 pane full width, 2 split in half, and so on) and never shrink below the width setting — beyond that they stack. If off, every pane is exactly the width setting.')
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.leafAutoWidth)
-        .onChange((value) => {
-          this.plugin.settings.leafAutoWidth = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Leaf Auto Width',
+      'If on, panes share the screen equally (1 pane full width, 2 split in half, and so on) and never shrink below the width setting — beyond that they stack. If off, every pane is exactly the width setting.',
+      'leafAutoWidth');
 
-    new Setting(containerEl)
-      .setName('Leaf Width on Desktop')
-      .setDesc('Pane width: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off')
-      .addText(text => text.setPlaceholder('Example: 550')
-        .setValue((this.plugin.settings.leafDesktopWidth || '') + '')
-        .onChange((value) => {
-          this.plugin.settings.leafDesktopWidth = parseIntOr(value, 550);
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addNumericSetting('Leaf Width on Desktop',
+      'Pane width: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off',
+      'leafDesktopWidth');
 
-    new Setting(containerEl)
-      .setName('Leaf Width on Mobile')
-      .setDesc('Pane width on mobile: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off')
-      .addText(text => text.setPlaceholder('Example: 350')
-        .setValue((this.plugin.settings.leafMobileWidth || '') + '')
-        .onChange((value) => {
-          this.plugin.settings.leafMobileWidth = parseIntOr(value, 350);
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addNumericSetting('Leaf Width on Mobile',
+      'Pane width on mobile: the minimum a pane shrinks to when auto width is on, or the exact pane width when it is off',
+      'leafMobileWidth');
 
-    new Setting(containerEl)
-      .setName("Toggle rotated headers")
-      .setDesc("When on, the note title is shown on each collapsed spine. When off, the spine stays but its title and icon are hidden.")
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.rotateHeaders)
-        .onChange((value) => {
-          this.plugin.settings.rotateHeaders = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Toggle rotated headers',
+      'When on, the note title is shown on each collapsed spine. When off, the spine stays but its title and icon are hidden.',
+      'rotateHeaders');
 
-    new Setting(containerEl)
-      .setName("Swap rotated header direction")
-      .setDesc("Flips the direction the spine title text reads")
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.headerAlt)
-        .onChange((value) => {
-          this.plugin.settings.headerAlt = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Swap rotated header direction',
+      'Flips the direction the spine title text reads',
+      'headerAlt');
 
     new Setting(containerEl)
     .setName("Header text orientation")
@@ -150,71 +186,32 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
       dropdown.setValue(this.plugin.settings.orienation)
       dropdown.onChange((value: Orientation) => {
         this.plugin.settings.orienation = value;
-        this.plugin.saveData(this.plugin.settings);
-        this.plugin.refresh();
+        this.saveAndRefresh();
       })});
 
-    new Setting(containerEl)
-      .setName("Toggle stacking")
-      .setDesc("When on, panes stack against the edges (native stacked tabs). When off, panes slide off-screen (classic mode).")
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.stackingEnabled)
-        .onChange((value) => {
-          this.plugin.settings.stackingEnabled = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Toggle stacking',
+      'When on, panes stack against the edges (native stacked tabs). When off, panes slide off-screen (classic mode).',
+      'stackingEnabled');
 
-    new Setting(containerEl)
-      .setName('Hover Peek')
-      .setDesc('When on, hovering a collapsed pane\'s spine (or a revealed content strip) briefly lifts that full pane above the stack (stacking mode only)')
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.hoverPeek)
-        .onChange((value) => {
-          this.plugin.settings.hoverPeek = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Hover Peek',
+      'When on, hovering a collapsed pane\'s spine (or a revealed content strip) briefly lifts that full pane above the stack (stacking mode only)',
+      'hoverPeek');
 
-    new Setting(containerEl)
-      .setName('Edge Reveal')
-      .setDesc('When on, the nearest buried pane on the left always shows a strip of its content next to the spines, so you can see what\'s there without hovering (stacking mode only)')
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.edgeReveal)
-        .onChange((value) => {
-          this.plugin.settings.edgeReveal = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Edge Reveal',
+      'When on, the nearest buried pane on the left always shows a strip of its content next to the spines, so you can see what\'s there without hovering (stacking mode only)',
+      'edgeReveal');
 
-    new Setting(containerEl)
-      .setName('Edge Reveal Width')
-      .setDesc('How wide the revealed content strip is, in pixels')
-      .addText(text => text.setPlaceholder('Example: 140')
-        .setValue((this.plugin.settings.edgeRevealWidth || '') + '')
-        .onChange((value) => {
-          this.plugin.settings.edgeRevealWidth = parseIntOr(value, 140);
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addNumericSetting('Edge Reveal Width',
+      'How wide the revealed content strip is, in pixels',
+      'edgeRevealWidth');
 
-    new Setting(containerEl)
-      .setName('Pin Buttons')
-      .setDesc('When on, each spine shows a pin button (on hover, at the bottom). Pinning keeps that pane\'s left half visible above the stack whenever it is buried')
-      .addToggle(toggle => toggle.setValue(this.plugin.settings.pinButtons)
-        .onChange((value) => {
-          this.plugin.settings.pinButtons = value;
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addToggleSetting('Pin Buttons',
+      'When on, each spine shows a pin button (on hover, at the bottom). Pinning keeps that pane\'s left half visible above the stack whenever it is buried',
+      'pinButtons');
 
-    new Setting(containerEl)
-      .setName('Spine Width')
-      .setDesc('The width of the rotated header (or gap) for stacking')
-      .addText(text => text.setPlaceholder('Example: 32')
-        .setValue((this.plugin.settings.headerWidth || '') + '')
-        .onChange((value) => {
-          this.plugin.settings.headerWidth = parseIntOr(value, 32);
-          this.plugin.saveData(this.plugin.settings);
-          this.plugin.refresh();
-        }));
+    this.addNumericSetting('Spine Width',
+      'The width of the rotated header (or gap) for stacking',
+      'headerWidth');
   }
 }
 
@@ -224,13 +221,12 @@ export class SlidingPanesCommands {
     this.plugin = plugin;
   }
 
-  addToggleSettingCommand(id:string, name:string, settingName:string) {
+  addToggleSettingCommand(id: string, name: string, settingName: BooleanSettingKey) {
     this.plugin.addCommand({
       id: id,
       name: name,
       callback: () => {
         // switch the setting, save and refresh
-        //@ts-ignore
         this.plugin.settings[settingName] = !this.plugin.settings[settingName];
         this.plugin.saveData(this.plugin.settings);
         this.plugin.refresh();
@@ -312,6 +308,16 @@ export class SlidingPanesCommands {
 
     // add a command to toggle swapped header direction
     this.addToggleSettingCommand('toggle-sliding-panes-header-alt', 'Swap rotated header direction', 'headerAlt');
+
+    // pin/unpin the current pane: the spine pin button only appears on hover,
+    // so touch screens and keyboard users need this path
+    this.plugin.addCommand({
+      id: 'toggle-pin-current-pane',
+      name: 'Toggle pin on current pane',
+      callback: () => {
+        peekManager.togglePinForActiveLeaf(this.plugin.app, this.plugin.settings);
+      }
+    });
 
     // move focus to the pane on the left
     this.plugin.addCommand({

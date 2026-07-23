@@ -1,5 +1,5 @@
 import { Platform, Plugin, WorkspaceLeaf } from 'obsidian';
-import { SlidingPanesSettings, SlidingPanesSettingTab, SlidingPanesCommands } from './settings';
+import { SlidingPanesSettings, SlidingPanesSettingTab, SlidingPanesCommands, sanitizeSettings } from './settings';
 import { getRootTabGroups, leafEl, setStacked, requestLayoutRecompute, TabGroupLike } from './adapter';
 import * as styleManager from './style-manager';
 import * as widthManager from './width-manager';
@@ -26,47 +26,25 @@ export default class SlidingPanesPlugin extends Plugin {
   // We warn at most once if this Obsidian version can't be driven to stack.
   private warnedNoSetStacked = false;
 
-  // Registered once, then left in place for the plugin's lifetime; the handlers
-  // themselves no-op while disabled.
-  private eventsRegistered = false;
-
   // Pending debounced resize recalc (window-typed so it's a number, not a Node timer).
   private resizeTimer: number | null = null;
 
   onload = async () => {
     this.settings = Object.assign(new SlidingPanesSettings(), await this.loadData());
-    this.sanitizeSettings();
+    sanitizeSettings(this.settings);
 
     this.addSettingTab(new SlidingPanesSettingTab(this.app, this));
     new SlidingPanesCommands(this).addCommands();
 
-    // Pin/unpin via command: the spine pin button only appears on hover, so
-    // touch screens and keyboard users need this path.
-    this.addCommand({
-      id: 'toggle-pin-current-pane',
-      name: 'Toggle pin on current pane',
-      callback: () => {
-        peekManager.togglePinForActiveLeaf(this.app, this.settings);
-      },
-    });
+    // Registered once for the plugin's lifetime; the handlers themselves
+    // no-op while disabled.
+    this.registerEvent(this.app.workspace.on('layout-change', this.handleLayoutChange));
+    this.registerEvent(this.app.workspace.on('resize', this.handleResize));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', this.handleActiveLeafChange));
 
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings.disabled) {
         this.enable();
-      }
-    });
-  };
-
-  // Older versions could persist NaN for numeric fields (JSON stores it as
-  // null, which Object.assign then copies over the default). Reset any
-  // non-finite numeric setting to its default so a corrupted data.json heals
-  // on the next launch.
-  private sanitizeSettings = () => {
-    const defaults = new SlidingPanesSettings();
-    const numericKeys = ['headerWidth', 'leafDesktopWidth', 'leafMobileWidth', 'edgeRevealWidth'] as const;
-    numericKeys.forEach((key) => {
-      if (!Number.isFinite(this.settings[key])) {
-        this.settings[key] = defaults[key];
       }
     });
   };
@@ -88,7 +66,6 @@ export default class SlidingPanesPlugin extends Plugin {
     this.stackAllGroups();
     widthManager.recalcWidths(this.app, this.settings);
     peekManager.attach(this.app, this.settings);
-    this.registerEventHandlers();
     this.nudgeNativeLayout();
   };
 
@@ -168,18 +145,6 @@ export default class SlidingPanesPlugin extends Plugin {
         );
       }
     });
-  };
-
-  // Register workspace event handlers exactly once.
-  private registerEventHandlers = () => {
-    if (this.eventsRegistered) {
-      return;
-    }
-    this.eventsRegistered = true;
-
-    this.registerEvent(this.app.workspace.on('layout-change', this.handleLayoutChange));
-    this.registerEvent(this.app.workspace.on('resize', this.handleResize));
-    this.registerEvent(this.app.workspace.on('active-leaf-change', this.handleActiveLeafChange));
   };
 
   // Layout changed (tab opened/closed/moved, popout opened): stack any new

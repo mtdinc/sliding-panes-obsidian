@@ -7,20 +7,6 @@ import { App, WorkspaceLeaf } from 'obsidian';
 // internal, this is the only file that should need to change.
 // ---------------------------------------------------------------------------
 
-// Module augmentation for the internal command API. This is the documented
-// community pattern for reaching `app.commands.executeCommandById`. It is kept
-// here as the typed, last-resort fallback surface. Note: v4 deliberately does
-// NOT drive stacking through a command (see setStacked below) because the
-// native "toggle stacked tabs" command only affects the focused group and
-// steals focus, so there is currently no live caller — only the type.
-declare module 'obsidian' {
-  interface App {
-    commands: {
-      executeCommandById(id: string): boolean;
-    };
-  }
-}
-
 // A deliberately thin view of Obsidian's internal WorkspaceTabs group.
 // We only ever touch containerEl and children; everything else stays unknown
 // on purpose so we don't grow a dependency on internals we don't need.
@@ -137,15 +123,76 @@ export function leafForElement(app: App, leafElement: HTMLElement): WorkspaceLea
   return found;
 }
 
+// Popout windows are separate JavaScript realms, so `instanceof HTMLElement`
+// against THIS window's constructor wrongly fails for their elements. Every
+// element check in the plugin duck-types on `.style` through this one
+// function instead of using instanceof anywhere.
+export function isStylableElement(node: unknown): node is HTMLElement {
+  const element = node as HTMLElement | null;
+  return !!element && element.style !== undefined;
+}
+
 // The scrollable `.workspace-tab-container` element inside a tab group, or
-// null. Popout windows are separate JavaScript realms, so `instanceof
-// HTMLElement` against THIS window's constructor wrongly fails for their
-// elements — we duck-type on `.style` instead.
+// null.
 export function getTabContainer(group: TabGroupLike): HTMLElement | null {
   const tabContainer = group.containerEl.querySelector('.workspace-tab-container');
-  const element = tabContainer as HTMLElement | null;
-  if (element && element.style !== undefined) {
-    return element;
+  if (isStylableElement(tabContainer)) {
+    return tabContainer;
+  }
+  return null;
+}
+
+// The direct `.workspace-leaf` children of a tab container, in DOM order. In
+// stacked mode the container interleaves header and leaf elements; callers
+// that need "just the panes" go through this.
+export function getLeafElements(tabContainer: HTMLElement): HTMLElement[] {
+  const nodeList = tabContainer.querySelectorAll(':scope > .workspace-leaf');
+  const leafElements: HTMLElement[] = [];
+  nodeList.forEach((node) => {
+    if (isStylableElement(node)) {
+      leafElements.push(node);
+    }
+  });
+  return leafElements;
+}
+
+// The next `.workspace-leaf` sibling after this element, or null — skips the
+// interleaved header elements.
+export function nextLeafSibling(element: HTMLElement): HTMLElement | null {
+  let next = element.nextElementSibling;
+  while (next && !next.classList.contains('workspace-leaf')) {
+    next = next.nextElementSibling;
+  }
+  return next as HTMLElement | null;
+}
+
+// The pane belonging to a spine: in stacked mode the container interleaves
+// header and leaf elements, so the pane is the spine's next element sibling.
+export function leafForHeader(header: HTMLElement): HTMLElement | null {
+  const sibling = header.nextElementSibling as HTMLElement | null;
+  if (sibling && sibling.classList.contains('workspace-leaf')) {
+    return sibling;
+  }
+  return null;
+}
+
+// Is this element inside a stacked tab group in a root workspace area (main
+// window or popout), not a sidebar? Class-based so it is cheap enough for hot
+// paths (hover handlers); groupForElement below answers the same question
+// when the caller needs the group object itself.
+export function isManagedElement(element: HTMLElement): boolean {
+  const inStackedGroup = element.closest('.workspace-tabs.mod-stacked') !== null;
+  const inRootArea = element.closest('.mod-root') !== null;
+  return inStackedGroup && inRootArea;
+}
+
+// Which root tab group contains this element, or null.
+export function groupForElement(app: App, element: HTMLElement): TabGroupLike | null {
+  const groups = getRootTabGroups(app);
+  for (const group of groups) {
+    if (group.containerEl.contains(element)) {
+      return group;
+    }
   }
   return null;
 }

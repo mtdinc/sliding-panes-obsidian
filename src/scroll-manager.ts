@@ -1,6 +1,6 @@
 import { App } from 'obsidian';
 import { SlidingPanesSettings } from './settings';
-import { TabGroupLike, getRootTabGroups, getTabContainer, isStacked, leafEl } from './adapter';
+import { getLeafElements, getTabContainer, groupForElement, isStacked, leafEl } from './adapter';
 
 // ---------------------------------------------------------------------------
 // scroll-manager.ts is the SOLE owner of "bring the active pane into view".
@@ -27,17 +27,6 @@ let latestRequestId = 0;
 // Known limitation: the math below assumes LTR layout. RTL workspaces reverse
 // the scroll axis (negative scrollLeft); v3 never handled that either.
 
-// Which managed root tab group contains this leaf element, or null.
-function findGroupForLeafElement(app: App, leafElement: HTMLElement): TabGroupLike | null {
-  const groups = getRootTabGroups(app);
-  for (const group of groups) {
-    if (group.containerEl.contains(leafElement)) {
-      return group;
-    }
-  }
-  return null;
-}
-
 // Compute and apply the scrollLeft that makes the pane fully visible between
 // the pinned spines. Runs after the two-frame delay, so re-check that the
 // elements are still in the document.
@@ -46,8 +35,7 @@ function applyScroll(container: HTMLElement, leafElement: HTMLElement, settings:
     return;
   }
 
-  const leafNodeList = container.querySelectorAll(':scope > .workspace-leaf');
-  const leafElements = Array.from(leafNodeList);
+  const leafElements = getLeafElements(container);
   const leafIndex = leafElements.indexOf(leafElement);
   if (leafIndex === -1) {
     return;
@@ -130,7 +118,7 @@ export function scrollLeafIntoView(app: App, settings: SlidingPanesSettings, lea
     return;
   }
 
-  const group = findGroupForLeafElement(app, leafElement);
+  const group = groupForElement(app, leafElement);
   if (!group || !isStacked(group)) {
     return;
   }

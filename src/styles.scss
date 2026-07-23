@@ -73,7 +73,9 @@ body.plugin-sliding-panes.plugin-sliding-panes-stacking {
     }
     > .workspace-leaf.sliding-panes-pin-engaged {
       z-index: 9;
-      clip-path: inset(0 50% 0 0);
+      /* --sp-pin-clip-right is published by style-manager from peek-manager's
+         PIN_VISIBLE_FRACTION, the one owner of the pinned-clip geometry. */
+      clip-path: inset(0 var(--sp-pin-clip-right, 50%) 0 0);
       filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.45));
       will-change: clip-path;
     }
@@ -134,7 +136,7 @@ body.plugin-sliding-panes.plugin-sliding-panes-stacking {
    state). While closing, the pane KEEPS peek's z-index and its clip is driven
    by the --sp-closing-* variables that peek-manager set to the pane's exact
    resting clip (reveal strip, pinned half, or fully covered) — so when the
-   class drops after 250ms, nothing on screen changes. This rule is declared
+   class drops just after the transition ends, nothing on screen changes. This rule is declared
    after the lift rules above and under one more body class, so it overrides
    the reveal/pin clips during the shrink.
    The transition must NOT live on the reveal/pin classes themselves: their
@@ -152,7 +154,10 @@ body.plugin-sliding-panes.plugin-sliding-panes-stacking.plugin-sliding-panes-smo
     }
     > .workspace-leaf.sliding-panes-peek,
     > .workspace-leaf.sliding-panes-peek-closing {
-      transition: clip-path 200ms ease-out, box-shadow 200ms ease-out;
+      /* --sp-lift-anim-ms is published by style-manager from peek-manager's
+         PEEK_TRANSITION_MS, so the closing-class hold always outlasts it. */
+      transition: clip-path var(--sp-lift-anim-ms, 200ms) ease-out,
+                  box-shadow var(--sp-lift-anim-ms, 200ms) ease-out;
     }
   }
 }

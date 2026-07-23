@@ -2,6 +2,7 @@ import { App } from 'obsidian';
 import { SlidingPanesSettings, Orientation } from './settings';
 import { collectDocuments } from './adapter';
 import { getFixedWidth } from './width-manager';
+import { PEEK_TRANSITION_MS, PIN_VISIBLE_FRACTION } from './peek-manager';
 
 // ---------------------------------------------------------------------------
 // style-manager.ts is the SOLE owner of the plugin's body classes and its one
@@ -58,6 +59,10 @@ function applyStyleElement(doc: Document, settings: SlidingPanesSettings): void 
   const cssLines = [
     'body.plugin-sliding-panes .mod-root .workspace-tabs.mod-stacked {',
     `  --tab-stacked-header-width: ${settings.headerWidth}px;`,
+    // Peek/pin geometry and timing are owned by peek-manager's constants;
+    // styles.scss consumes these variables so the two sides can't drift.
+    `  --sp-lift-anim-ms: ${PEEK_TRANSITION_MS}ms;`,
+    `  --sp-pin-clip-right: ${(1 - PIN_VISIBLE_FRACTION) * 100}%;`,
   ];
   // In auto-width mode the real width is computed per group by width-manager
   // (inline styles), so publishing a fixed variable would just be misleading.
@@ -65,7 +70,13 @@ function applyStyleElement(doc: Document, settings: SlidingPanesSettings): void 
     cssLines.push(`  --tab-stacked-pane-width: ${getFixedWidth(settings)}px;`);
   }
   cssLines.push('}');
-  styleElement.textContent = cssLines.join('\n');
+
+  // Re-assigning identical CSS text still invalidates the stylesheet and
+  // forces a style recalc; apply() runs on every layout-change, so skip it.
+  const cssText = cssLines.join('\n');
+  if (styleElement.textContent !== cssText) {
+    styleElement.textContent = cssText;
+  }
 }
 
 // Apply body classes + injected style across every open document.
