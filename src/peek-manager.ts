@@ -25,9 +25,11 @@ import {
 //
 //  REVEAL (automatic): the nearest buried pane on the LEFT is always shown as
 //  a content strip sitting just after the pinned spines, clipped to
-//  edgeRevealWidth. width-manager reserves room for the strip when panes
-//  overflow, so it usually occupies its own space rather than covering the
-//  active pane. Re-evaluated on every deck scroll / resize / layout change.
+//  edgeRevealWidth. width-manager gives the strip a lane out of whatever
+//  space is spare after the visible panes take their minimum width — the
+//  lane can shrink to zero on tight windows, in which case the strip simply
+//  overlaps the leftmost visible pane (it lifts above the stack anyway).
+//  Re-evaluated on every deck scroll / resize / layout change.
 //
 //  PIN (manual): every spine carries a small pin button (bottom of the spine,
 //  fades in on hover). Pinning keeps that pane's left half visible whenever

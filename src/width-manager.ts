@@ -20,12 +20,79 @@ export function getFixedWidth(settings: SlidingPanesSettings): number {
   return settings.leafMobileWidth;
 }
 
-// In auto-width mode, the panes that fit on screen tile it exactly: work out
-// how many panes can be fully visible without shrinking below the fixed-width
-// floor, then split the available space evenly among exactly that many. When
-// every pane fits this is plain equal distribution (1 pane full width, 2 split
-// in half, ...); once panes overflow into stacking, the visible panes still
-// sit flush against the spines instead of leaving an arbitrary sliver or gap.
+// The auto-width geometry for one stacked group: how wide each pane is, and
+// how wide the edge-reveal strip's dedicated lane is (0 when it gets none).
+// Both numbers come from the same arithmetic, so they live in one function —
+// scroll-manager parks the active pane past the lane, and if it computed the
+// lane independently the two could disagree and panes would land misaligned.
+interface StackedAutoLayout {
+  paneWidth: number;
+  revealSlotWidth: number;
+}
+
+// Panes that fit on screen tile it exactly: work out how many can be fully
+// visible without shrinking below the fixed-width floor, then split the
+// available space evenly among exactly that many. When every pane fits this
+// is plain equal distribution (1 pane full width, 2 split in half, ...); once
+// panes overflow into stacking, the visible panes still sit flush against the
+// spines instead of leaving an arbitrary sliver or gap.
+function computeStackedAutoLayout(group: TabGroupLike, tabContainer: HTMLElement, settings: SlidingPanesSettings): StackedAutoLayout {
+  const tabHeaders = tabContainer.querySelectorAll('.workspace-tab-header');
+  const numPanes = Math.max(tabHeaders.length, 1);
+  const groupWidth = group.containerEl.clientWidth;
+  const minimumWidth = getFixedWidth(settings);
+
+  // Stacking pins ALL spines on screen at all times, so every spine
+  // subtracts from the group width before panes divide what's left.
+  let contentWidth = groupWidth - numPanes * settings.headerWidth;
+  const panesThatFit = Math.floor(contentWidth / minimumWidth);
+  const visiblePanes = Math.min(Math.max(panesThatFit, 1), numPanes);
+
+  // Once panes overflow into stacking, peek-manager shows the nearest buried
+  // pane as an edge-reveal strip next to the spines. Give the strip its own
+  // lane out of whatever space is SPARE after the visible panes take their
+  // minimum — never more. Reserving a full lane unconditionally (the old
+  // behavior) could cost an entire pane: a window fitting two 550px panes
+  // with 70px spare would drop to ONE stretched pane just to give a 140px
+  // strip its lane. Now the lane shrinks to the 70px that are actually free
+  // and the strip overlaps the leftmost pane by the difference.
+  // (No overflow → nothing buried → no strip → no lane.)
+  let revealSlotWidth = 0;
+  const panesOverflow = panesThatFit < numPanes;
+  if (settings.edgeReveal && panesOverflow) {
+    const spareWidth = contentWidth - visiblePanes * minimumWidth;
+    revealSlotWidth = Math.max(0, Math.min(settings.edgeRevealWidth, spareWidth));
+    contentWidth = contentWidth - revealSlotWidth;
+  }
+
+  const dividedWidth = Math.floor(contentWidth / visiblePanes);
+  return {
+    paneWidth: Math.max(dividedWidth, minimumWidth),
+    revealSlotWidth: revealSlotWidth,
+  };
+}
+
+// The width of the edge-reveal strip's dedicated lane in this group, for
+// scroll-manager to park the active pane past. 0 whenever no lane exists:
+// feature off, stacking off, or no spare room in auto-width mode. In
+// fixed-width mode panes never stretch to fill the group, so the lane is
+// always the full configured width.
+export function getRevealSlotWidth(group: TabGroupLike, settings: SlidingPanesSettings): number {
+  if (!settings.edgeReveal || !settings.stackingEnabled) {
+    return 0;
+  }
+  if (!settings.leafAutoWidth) {
+    return settings.edgeRevealWidth;
+  }
+  const tabContainer = getTabContainer(group);
+  if (!tabContainer) {
+    return 0;
+  }
+  return computeStackedAutoLayout(group, tabContainer, settings).revealSlotWidth;
+}
+
+// In auto-width mode, panes tile the screen exactly; see
+// computeStackedAutoLayout for the stacking arithmetic.
 function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, settings: SlidingPanesSettings): number {
   const tabHeaders = tabContainer.querySelectorAll('.workspace-tab-header');
   const numPanes = Math.max(tabHeaders.length, 1);
@@ -38,24 +105,7 @@ function computeAutoWidth(group: TabGroupLike, tabContainer: HTMLElement, settin
   // wider than the number of panes that actually exist.
 
   if (settings.stackingEnabled) {
-    // Stacking ON pins ALL spines on screen at all times, so every spine
-    // subtracts from the group width before panes divide what's left.
-    let contentWidth = groupWidth - numPanes * spineWidth;
-    let panesThatFit = Math.floor(contentWidth / minimumWidth);
-
-    // Once panes overflow into stacking, peek-manager shows the nearest
-    // buried pane as an edge-reveal strip next to the spines. Reserve its
-    // room so the strip sits in its own space instead of covering the
-    // visible panes. (No overflow → nothing buried → no strip.)
-    const panesOverflow = panesThatFit < numPanes;
-    if (settings.edgeReveal && panesOverflow) {
-      contentWidth = contentWidth - settings.edgeRevealWidth;
-      panesThatFit = Math.floor(contentWidth / minimumWidth);
-    }
-
-    const visiblePanes = Math.min(Math.max(panesThatFit, 1), numPanes);
-    const dividedWidth = Math.floor(contentWidth / visiblePanes);
-    return Math.max(dividedWidth, minimumWidth);
+    return computeStackedAutoLayout(group, tabContainer, settings).paneWidth;
   }
 
   // Stacking OFF (slide-off) scrolls spines with their panes, so only the

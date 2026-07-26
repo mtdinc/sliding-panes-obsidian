@@ -1,6 +1,7 @@
 import { App } from 'obsidian';
 import { SlidingPanesSettings } from './settings';
-import { getLeafElements, getTabContainer, groupForElement, isStacked, leafEl } from './adapter';
+import { TabGroupLike, getLeafElements, getTabContainer, groupForElement, isStacked, leafEl } from './adapter';
+import { getRevealSlotWidth } from './width-manager';
 
 // ---------------------------------------------------------------------------
 // scroll-manager.ts is the SOLE owner of "bring the active pane into view".
@@ -30,7 +31,7 @@ let latestRequestId = 0;
 // Compute and apply the scrollLeft that makes the pane fully visible between
 // the pinned spines. Runs after the two-frame delay, so re-check that the
 // elements are still in the document.
-function applyScroll(container: HTMLElement, leafElement: HTMLElement, settings: SlidingPanesSettings): void {
+function applyScroll(group: TabGroupLike, container: HTMLElement, leafElement: HTMLElement, settings: SlidingPanesSettings): void {
   if (!container.isConnected || !leafElement.isConnected) {
     return;
   }
@@ -72,10 +73,12 @@ function applyScroll(container: HTMLElement, leafElement: HTMLElement, settings:
     leftInset = (leafIndex + 1) * headerWidth;
     rightInset = (leafCount - 1 - leafIndex) * headerWidth;
     // When a pane is buried to our left, peek-manager shows its edge-reveal
-    // strip right after the spines; park the active pane past the strip so
-    // the two don't overlap.
-    if (settings.edgeReveal && leafIndex > 0) {
-      leftInset += settings.edgeRevealWidth;
+    // strip right after the spines; park the active pane past the strip's
+    // dedicated lane so the two don't overlap. width-manager owns the lane
+    // decision (it can shrink to the spare space, or to 0) — asking it keeps
+    // scroll parking and pane widths in agreement.
+    if (leafIndex > 0) {
+      leftInset += getRevealSlotWidth(group, settings);
     }
   } else {
     leftInset = headerWidth;
@@ -143,7 +146,7 @@ export function scrollLeafIntoView(app: App, settings: SlidingPanesSettings, lea
       if (settings.disabled) {
         return; // plugin was turned off while this scroll was queued
       }
-      applyScroll(container, leafElement, settings);
+      applyScroll(group, container, leafElement, settings);
     });
   });
 }
