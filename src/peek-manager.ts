@@ -1,7 +1,14 @@
 import { App, Notice, setIcon } from 'obsidian';
-// Type-only: settings.ts imports this module for the pin command, so a value
-// import here would create a circular runtime dependency.
+// Type-only: settings.ts imports this module for the pin command, so the two
+// modules form a cycle and a value import here runs at an unpredictable point
+// in module init.
 import type { SlidingPanesSettings } from './settings';
+// The ONE exception, and it is safe for a specific reason: this is a plain
+// number, and it is read only inside measureGroup() — never at module-init
+// time — so by the time anything looks at it both module bodies have finished.
+// The strip we draw and the setting the user types share this floor; a second
+// copy of the number here could drift from the one settings.ts clamps to.
+import { MIN_EDGE_REVEAL_WIDTH } from './settings';
 import {
   collectDocuments,
   followingStackedSiblings,
@@ -18,20 +25,26 @@ import * as scrollManager from './scroll-manager';
 import * as widthManager from './width-manager';
 
 // ---------------------------------------------------------------------------
-// peek-manager.ts is the SOLE owner of interactions that lift a pane above
-// the stack. There are three of them, from most transient to most persistent:
+// peek-manager.ts is the SOLE owner of the three ways a buried pane comes to the
+// front of the stack, from most transient to most persistent:
 //
 //  PEEK (hover): hover a spine — or a revealed content strip — for
 //  PEEK_SHOW_DELAY_MS and the full pane lifts; it drops PEEK_HIDE_DELAY_MS
 //  after the pointer leaves the spine/strip and the lifted pane.
 //
-//  REVEAL (automatic): the nearest buried pane on the LEFT is always shown as
-//  a content strip sitting just after the pinned spines, clipped to
-//  edgeRevealWidth. width-manager gives the strip a lane out of whatever
-//  space is spare after the visible panes take their minimum width — the
-//  lane can shrink to zero on tight windows, in which case the strip simply
-//  overlaps the leftmost visible pane (it lifts above the stack anyway).
-//  Re-evaluated on every deck scroll / resize / layout change.
+//  REVEAL (automatic): the nearest buried pane on the LEFT shows a strip of its
+//  content just after the pinned spines. Note what actually does the revealing:
+//  the LANE does, not this module. width-manager reserves the room out of
+//  edgeRevealWidth (all of it in fixed-width mode, only what is spare in auto
+//  mode, none at all under a manual pane count) and scroll-manager parks the pane
+//  in front of it past that room, which leaves the gap genuinely uncovered. The
+//  strip's clip is then MEASURED to match the gap exactly, never requested — so
+//  unlike peek and pin, this one exposes no pixel that was not already on screen.
+//  What the class contributes is the content load (a buried tab can still be an
+//  unrendered deferred view), the entry point that lets hover grow the strip into
+//  a full peek, and the reveal styling in styles.scss. Below
+//  MIN_EDGE_REVEAL_WIDTH of room there is no strip at all. Re-evaluated on every
+//  deck scroll / resize / layout change.
 //
 //  PIN (manual): every spine carries a small pin button (bottom of the spine,
 //  fades in on hover). Pinning keeps that pane's left half visible whenever
@@ -39,12 +52,15 @@ import * as widthManager from './width-manager';
 //  Pin state lives only on the leaf element (a CSS class) — session-level by
 //  design, not persisted.
 //
-// All three work the same way underneath: native stacked tabs paint by DOM
-// order with no inline z-index, so raising the pane's z-index lifts it in
-// place, still pinned by its own sticky offset — no scrolling, no layout
-// shift. Stacking order: peek (10) over pin (9) over reveal (8), and the CSS
-// rules are declared in reverse order so peek also un-clips a pinned or
-// revealed pane while hovered.
+// Peek and pin both work by z-index: native stacked tabs paint by DOM order with
+// no inline z-index, so raising a pane's z-index brings it forward in place,
+// still held by its own sticky offset — no scrolling, no layout shift. Reveal
+// shares the mechanism but no longer needs it to expose anything, since its clip
+// matches a gap that is already uncovered; it keeps its z-index because a
+// neighbour may still overlap the strip by a rounding pixel (OVERLAP_EPSILON_PX)
+// and because peek must be able to out-rank it. Stacking order: peek (10) over
+// pin (9) over reveal (8), and the CSS rules are declared in reverse order so
+// peek also un-clips a pinned or revealed pane while hovered.
 // ---------------------------------------------------------------------------
 
 // Classes styles.scss keys off.
@@ -104,11 +120,13 @@ export const PIN_VISIBLE_FRACTION = 0.5;
 // (integer width rounding can leave a stray pixel).
 const OVERLAP_EPSILON_PX = 2;
 
-// Hard ceiling on how much of a pane the reveal strip may show, as a fraction
-// of the pane's width. The Edge Reveal Width setting can legitimately be set
-// wider than a pane is (a 600px strip on a 550px pane), and an unclipped
-// "strip" is just a pane with a drop shadow painting over its neighbours.
-const MAX_REVEAL_FRACTION = 0.6;
+// (There is deliberately no "widest useful strip" fraction here any more. The
+// strip is measured, not requested: it spans the gap between the spines and
+// whatever paints over the candidate next, so it can never paint OVER a
+// neighbour — which is the property the old fraction cap was really reaching
+// for. It can still be WIDE: a candidate covered by only a hair, on a
+// hand-scrolled deck, yields a strip nearly as wide as the pane. That is
+// harmless, because every pixel of it is a pixel nothing else was covering.)
 
 // Live references, set by attach(). Handlers read them at event time so
 // settings toggles take effect without re-registering anything.
@@ -789,7 +807,7 @@ function applyPins(plans: PinPlan[]): void {
 // MEASURE: decide the reveal strip for one stacked group — the nearest buried
 // pane on the left of the first fully visible pane, clipped so the strip sits
 // right after the pinned spines and shows the note's left edge.
-function measureGroup(group: TabGroupLike, settings: SlidingPanesSettings, revealActive: boolean): GroupPlan | null {
+function measureGroup(group: TabGroupLike, revealActive: boolean): GroupPlan | null {
   const container = getTabContainer(group);
   if (!container) {
     return null;
@@ -864,27 +882,44 @@ function measureGroup(group: TabGroupLike, settings: SlidingPanesSettings, revea
     }
   }
 
-  // Invariant: a reveal is a STRIP — it must always leave the majority of the
-  // pane clipped away, or it stops being an edge peek and becomes a whole pane
-  // with a drop shadow sitting on top of its right-hand neighbours.
-  const widestUsefulStrip = candidateRect.width * MAX_REVEAL_FRACTION;
-  const requestedStripWidth = Math.min(settings.edgeRevealWidth, widestUsefulStrip);
-
-  // ...or wider than that, if whatever covers the candidate starts further
-  // right. Stopping short of the covering edge would leave a band of bare
-  // background between the two, and clipping the pane mid-glyph is exactly what
-  // made the strip look like cut-off text. The covering edge is the next SPINE
-  // in the normal case, so the strip ends flush against it and never paints
-  // over it.
+  // The strip ends where the next thing painted over the candidate BEGINS —
+  // which uncoveredSpan already measured for us. That edge is the next pane's
+  // SPINE in the normal case, never the next pane itself, and it is the one
+  // boundary the strip may not cross: a strip reaching past it covers the spine,
+  // swallowing its title and its pin button (clip-path clips hit-testing too).
+  // Anchoring on the first visible PANE's left edge instead is wrong by exactly
+  // one spine width, because with a lane that pane's own spine rides unstuck at
+  // the near end of it.
+  //
+  // Landing exactly on that edge is also the only width that leaves no band of
+  // bare background between the strip and the spine — stopping short is what
+  // used to make the strip look like cut-off text.
+  //
+  // So the strip's WIDTH is not decided here at all, and deliberately so: it is
+  // whatever room width-manager left free, and width-manager derives that from
+  // settings.edgeRevealWidth (the whole configured width in fixed-width mode,
+  // only what was spare in auto mode, nothing at all under a manual pane count).
+  // ONE owner for the width. Asking for a width here as well — the old
+  // max(stripStart + edgeRevealWidth, ...) — is precisely what let the strip
+  // spend room it had never been given and paint across the active pane.
   const coveringEdgeLeft = candidateRect.left + visibleSpans[candidateIndex];
-  const stripEnd = Math.max(stripStart + requestedStripWidth, coveringEdgeLeft);
+
+  // No room means no strip. Below the same floor the Edge Reveal Width field
+  // clamps to there is nothing legible to show, and drawing it anyway leaves a
+  // shadowed sliver welded to the spine. The span goes NEGATIVE when the first
+  // visible pane sits flush against the spines: its spine is then stuck directly
+  // over the candidate's left columns, which pushed stripStart past the covering
+  // edge above — so this swallows that case too.
+  if (coveringEdgeLeft - stripStart < MIN_EDGE_REVEAL_WIDTH) {
+    return { leaves, reveal: null };
+  }
 
   return {
     leaves,
     reveal: {
       candidate: leaves[candidateIndex],
       clipLeft: Math.max(0, stripStart - candidateRect.left),
-      clipRight: Math.max(0, candidateRect.right - stripEnd),
+      clipRight: Math.max(0, candidateRect.right - coveringEdgeLeft),
     },
   };
 }
@@ -894,7 +929,13 @@ function applyGroup(plan: GroupPlan): void {
   const reveal = plan.reveal;
   plan.leaves.forEach((leaf) => {
     const keepsStrip = reveal !== null && leaf === reveal.candidate;
-    if (!keepsStrip && revealedLeaves.has(leaf)) {
+    // Keyed off the CLASS, not off our own bookkeeping. A leaf that was
+    // momentarily disconnected — a tab drag reordering the container — gets
+    // pruned from revealedLeaves by the evaluation pass, and once it is out of
+    // the Set the old test cleared nothing: the pane kept the class and its
+    // stale clip for the rest of the session. clearReveal is idempotent, so
+    // testing the class alone is strictly safer.
+    if (!keepsStrip && leaf.classList.contains(REVEAL_CLASS)) {
       clearReveal(leaf);
     }
   });
@@ -928,6 +969,14 @@ function applyGroup(plan: GroupPlan): void {
 // stuck prelift pins a full-size compositing layer forever — so any stray
 // class, left behind by a state path we didn't anticipate, is cleaned up on
 // every evaluation. Class queries only; nothing here reads geometry.
+//
+// Deliberately NOT extended to the reveal and pin classes. Those are driven by
+// per-group / per-pane bookkeeping that legitimately lags the DOM for a frame
+// during a tab drag (measurePins prunes a momentarily disconnected pinned leaf,
+// and an evaluation can land after re-insert but before layout-change
+// re-registers it), so a sweep keyed on those sets would strip a live pin and
+// collapse the pinned pane for a frame. applyGroup's class-keyed clear covers
+// the stray-reveal case without that risk.
 function healStrayLifts(doc: Document): void {
   doc.querySelectorAll('.' + PEEK_CLASS).forEach((element) => {
     if (element !== peekedLeaf && element !== landingLeaf) {
@@ -1008,7 +1057,7 @@ function evaluateNow(doc: Document): void {
       if (!isStacked(group) || group.containerEl.ownerDocument !== doc) {
         return;
       }
-      const plan = measureGroup(group, settings, revealActive);
+      const plan = measureGroup(group, revealActive);
       if (plan) {
         groupPlans.push(plan);
       }

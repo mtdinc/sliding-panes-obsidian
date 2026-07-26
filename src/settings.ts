@@ -64,7 +64,12 @@ function parseIntOr(value: string, fallback: number): number {
 // to read anything from; above the maximum it stops being a strip at all — the
 // clip no longer hides any of the pane, so a full unclipped pane sits at
 // z-index 8 painting over every pane to its right.
-const MIN_EDGE_REVEAL_WIDTH = 40;
+//
+// The minimum is exported because it is not only a settings clamp: peek-manager
+// applies the SAME floor to the strip it actually draws (the room available can
+// be narrower than the setting asked for), and two copies of that number could
+// drift apart.
+export const MIN_EDGE_REVEAL_WIDTH = 40;
 const MAX_EDGE_REVEAL_WIDTH = 600;
 
 // Heal any non-finite numeric setting back to its default, then clamp the ones

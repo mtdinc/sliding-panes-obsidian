@@ -68,7 +68,12 @@ export default class SlidingPanesPlugin extends Plugin {
 
     styleManager.apply(this.app, this.settings);
     this.stackAllGroups();
-    widthManager.recalcWidths(this.app, this.settings);
+    // Widths AND the scroll park, together — width-manager owns that pairing.
+    // Safe this early because enable() only runs from onLayoutReady (or a user
+    // toggle), and the park itself defers two frames and re-checks that its
+    // elements are still connected, so an unmeasurable leaf is skipped, not
+    // scrolled to a garbage offset.
+    widthManager.applyPaneLayout(this.app, this.settings);
     peekManager.attach(this.app, this.settings);
     this.nudgeNativeLayout();
   };
@@ -98,7 +103,11 @@ export default class SlidingPanesPlugin extends Plugin {
       return;
     }
     styleManager.apply(this.app, this.settings);
-    widthManager.recalcWidths(this.app, this.settings);
+    // Re-park as well as resize: a settings change can move every pane (Leaf
+    // Width, Spine Width, Edge Reveal Width, auto-width on/off), and the
+    // edge-reveal strip is measured from the gap the park leaves, so widths
+    // alone would show a strip sized for the layout the user just left behind.
+    widthManager.applyPaneLayout(this.app, this.settings);
     // Drop any live peek before re-attaching: a toggle that turns hoverPeek or
     // stacking off mid-peek would otherwise leave the lifted pane stuck (the
     // handler's own guards stop it from ever reaching its hide path).
@@ -162,7 +171,14 @@ export default class SlidingPanesPlugin extends Plugin {
     }
     styleManager.apply(this.app, this.settings);
     this.stackAllGroups();
-    widthManager.recalcWidths(this.app, this.settings);
+    // Opening, closing or moving a tab changes how many panes share the group,
+    // so every pane's width and flow position moves: park each group's displayed
+    // pane again or the deck stays aligned to the tab count it had before.
+    // But layout-change ALSO fires for plenty that moves no pane (a popout
+    // opening, reading ↔ editing, a rename, another plugin's leaves), and
+    // parking on those would yank a hand-scrolled deck for nothing — so here,
+    // and only here, the park is conditional on a pane having actually moved.
+    widthManager.applyPaneLayout(this.app, this.settings, 'only-if-panes-moved');
     // A layout change can detach the elements a peek/landing sits on; drop
     // only those (unrelated churn — sidebar toggles, a deferred view loading —
     // must not kill a live lift). Also re-attach listeners so newly opened
@@ -179,7 +195,10 @@ export default class SlidingPanesPlugin extends Plugin {
     peekManager.reevaluateAfterLayoutSettles();
   };
 
-  // Window/pane resized: recalc widths, debounced so we don't thrash.
+  // Window/pane resized: re-apply the pane layout, debounced so we don't thrash.
+  // The debounce is what makes it safe to park here: a sidebar drag fires resize
+  // continuously and every event resets the timer, so the body below runs once,
+  // after the drag settles — never a scroll per frame.
   private handleResize = () => {
     if (this.settings.disabled) {
       return;
@@ -192,7 +211,11 @@ export default class SlidingPanesPlugin extends Plugin {
       if (this.settings.disabled) {
         return;
       }
-      widthManager.recalcWidths(this.app, this.settings);
+      // Resizing the window or a sidebar moves every pane's flow position, so
+      // the park has to follow — without it the deck keeps the scrollLeft it
+      // computed for the old width and the edge-reveal gap becomes arbitrary
+      // (often narrower than the strip's floor, which then hides it entirely).
+      widthManager.applyPaneLayout(this.app, this.settings);
       // New widths can change which panes are buried; re-check the edge
       // reveal strip and pin engagement.
       peekManager.reevaluate();

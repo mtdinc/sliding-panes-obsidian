@@ -134,9 +134,13 @@ function computeStackedAutoLayout(group: TabGroupLike, tabContainer: HTMLElement
 
     return {
       paneWidth: paneWidth,
-      // No lane for the reveal strip: manual panes claim ALL the space. The
-      // strip still appears — it just overlaps the leftmost visible pane, the
-      // same thing that already happens on a window with no spare room.
+      // No lane for the reveal strip: manual panes claim ALL the space. This
+      // lane is a statement of the room the strip actually HAS — peek-manager
+      // measures the strip from it and never draws past it — so a zero lane
+      // means Edge Reveal shows nothing at all while a manual pane count is in
+      // force. That is the deliberate trade: the user named the panes they want
+      // to see, and a strip painted over one of them is not a strip, it is a
+      // pane sitting on top of a pane.
       revealSlotWidth: 0,
       visiblePanes: Math.min(sharingPanes, panesThatFitOnScreen),
       totalPanes: numPanes,
@@ -152,8 +156,9 @@ function computeStackedAutoLayout(group: TabGroupLike, tabContainer: HTMLElement
   // minimum — never more. Reserving a full lane unconditionally (the old
   // behavior) could cost an entire pane: a window fitting two 550px panes
   // with 70px spare would drop to ONE stretched pane just to give a 140px
-  // strip its lane. Now the lane shrinks to the 70px that are actually free
-  // and the strip overlaps the leftmost pane by the difference.
+  // strip its lane. Now the lane shrinks to the 70px that are actually free and
+  // the strip is measured down to fit it — peek-manager never draws past the
+  // room reserved here, so a short lane costs strip width, never a pane.
   // (No overflow → nothing buried → no strip → no lane.)
   let revealSlotWidth = 0;
   const panesOverflow = panesThatFit < numPanes;
@@ -265,16 +270,19 @@ function computeTargetWidth(group: TabGroupLike, tabContainer: HTMLElement, sett
   return getFixedWidth(settings);
 }
 
-// Write our target inline width onto every leaf in one stacked group.
-function applyWidthToGroup(group: TabGroupLike, settings: SlidingPanesSettings): void {
+// Write our target inline width onto every leaf in one stacked group. Returns
+// whether any pane actually moved, which is what tells applyPaneLayout below
+// apart a pass that reshaped the deck from one that changed nothing.
+function applyWidthToGroup(group: TabGroupLike, settings: SlidingPanesSettings): boolean {
   const tabContainer = getTabContainer(group);
   if (!tabContainer) {
-    return;
+    return false;
   }
 
   const targetWidth = computeTargetWidth(group, tabContainer, settings);
   const targetWidthPx = targetWidth + 'px';
 
+  let anyPaneMoved = false;
   const leafElements = getLeafElements(tabContainer);
   leafElements.forEach((leafElement) => {
     // Skip leaves already at the target: this runs on every layout-change and
@@ -289,19 +297,9 @@ function applyWidthToGroup(group: TabGroupLike, settings: SlidingPanesSettings):
     leafElement.style.width = targetWidthPx;
     leafElement.style.minWidth = targetWidthPx;
     leafElement.style.maxWidth = targetWidthPx;
+    anyPaneMoved = true;
   });
-}
-
-// Recalculate and apply pane widths across every managed, stacked root group.
-// Called on enable, settings change, layout-change, and (debounced) resize.
-export function recalcWidths(app: App, settings: SlidingPanesSettings): void {
-  const groups = getRootTabGroups(app);
-  groups.forEach((group) => {
-    if (!isStacked(group)) {
-      return; // we only manage stacked groups
-    }
-    applyWidthToGroup(group, settings);
-  });
+  return anyPaneMoved;
 }
 
 // Remove every inline width style we set, restoring Obsidian's own sizing.
@@ -473,23 +471,68 @@ function targetGroup(app: App): TabGroupLike | null {
   return null;
 }
 
-// Re-apply the widths after a pane-count change, then put every stacked group's
-// own active pane back between its pinned spines. Both halves belong here:
-// recalcWidths resizes EVERY group at once, so in a split layout the group the
-// user is not currently in would otherwise be left with its active pane sitting
-// half under its own spines, with no event coming to move it. Parking several
-// groups in one pass is safe because scroll-manager keys its stale-request
-// guard per scroll container — sibling parks no longer cancel each other.
+// Whether a pass that moved no pane should still re-park the deck.
+//
+//  'always' — the caller knows something OUTSIDE the panes changed: the viewport
+//  (window or sidebar resize), a setting, or the pane-count state. Pane widths
+//  can be identical across such a change and the park still be required — in
+//  fixed-width mode a resize moves no pane at all, yet leftInset and the scroll
+//  bounds both moved with the viewport. This is the default because "park
+//  anyway" is never wrong, only occasionally redundant.
+//
+//  'only-if-panes-moved' — for Obsidian's layout-change, which fires for a great
+//  many things that touch no pane geometry whatsoever: a popout opening, reading
+//  ↔ editing, a file rename, another plugin's leaf churn. Parking on those is not
+//  merely redundant, it is user-visible damage: scroll-manager's tolerance band
+//  collapses to nothing when only one pane is visible or the displayed tab is
+//  first or last in the group, so an incidental event would yank a hand-scrolled
+//  deck back for no reason at all.
+export type ParkPolicy = 'always' | 'only-if-panes-moved';
+
+// THE entry point for "the pane geometry changed": re-apply each stacked group's
+// widths, then put that group's own displayed pane back between its pinned
+// spines. Both halves belong together, which is why neither is exported alone —
+// resizing panes WITHOUT re-parking leaves the deck at a scrollLeft computed for
+// the old widths, and everything measured off the live rects afterwards inherits
+// that staleness. peek-manager sizes the edge-reveal strip from the gap the park
+// creates, so a stale park means a strip of unrelated width, or no strip at all
+// once the gap drops under its floor.
+//
+// Every group is visited, not just the active one: in a split layout the widths
+// change everywhere at once, so a group the user is not currently in would
+// otherwise be left with its displayed pane half under its own spines and no
+// event coming to move it. Several parks in one pass are safe because
+// scroll-manager keys its stale-request guard per scroll container — sibling
+// parks don't cancel each other. The park decision is likewise per group, so a
+// split layout where only one side was reshaped leaves the other side's scroll
+// position alone.
+//
+// Parking is also idempotent, which is what makes it safe on the hot paths:
+// scroll-manager starts from the container's CURRENT scrollLeft and moves only
+// when the pane is genuinely outside the fully-visible range.
 //
 // Every mutator below funnels through here, so callers never have to remember a
 // follow-up call.
-function applyPaneCountChange(app: App, settings: SlidingPanesSettings): void {
-  recalcWidths(app, settings);
-
+//
+// Known limitation, unchanged from before this guard existed: closing a
+// non-active tab can move no pane width — always true in FIXED-width mode, and
+// true in auto-width mode whenever the re-divided width lands on the same
+// integer (the steady state once panes overflow the window). There
+// 'only-if-panes-moved' skips the park even though the surviving panes' flow
+// positions shifted. Nothing parked on that path previously either
+// (layout-change did not park at all), and the next activation or resize fixes
+// it.
+export function applyPaneLayout(app: App, settings: SlidingPanesSettings, parkPolicy: ParkPolicy = 'always'): void {
   getRootTabGroups(app).forEach((group) => {
     if (!isStacked(group)) {
       return; // we only size (and therefore only re-park) stacked groups
     }
+
+    const panesMoved = applyWidthToGroup(group, settings);
+    if (parkPolicy === 'only-if-panes-moved' && !panesMoved) {
+      return; // nothing about this group's geometry moved; leave its scroll be
+    }
+
     // The pane this group is showing right now. adapter owns that decoding —
     // and see its comment for why the obvious workspace API is the wrong tool
     // here. A group whose shape it can't read is skipped rather than guessed at.
@@ -521,7 +564,7 @@ function finishWithoutDialMove(app: App, settings: SlidingPanesSettings, leftFoc
   if (!leftFocusMode) {
     return describeOutcome(clampMessage, false);
   }
-  applyPaneCountChange(app, settings);
+  applyPaneLayout(app, settings);
   return describeOutcome('Sliding Panes: focus mode off', true);
 }
 
@@ -578,7 +621,7 @@ export function adjustPaneCount(app: App, settings: SlidingPanesSettings, delta:
 
   const changed = dialMoved || leftFocusMode;
   if (changed) {
-    applyPaneCountChange(app, settings);
+    applyPaneLayout(app, settings);
   }
 
   // Measure again now that the change has landed: the readability floor may
@@ -607,7 +650,7 @@ export function resetPaneCount(app: App, settings: SlidingPanesSettings): PaneCo
   }
 
   if (changed) {
-    applyPaneCountChange(app, settings);
+    applyPaneLayout(app, settings);
   }
   return describeOutcome('Sliding Panes: automatic pane count', changed);
 }
@@ -634,11 +677,11 @@ export function setFocusMode(app: App, settings: SlidingPanesSettings, on: boole
   focusModeActive = on;
   // Only re-park when the flag can actually move the layout. Leaving focus
   // while auto width is off is the one case where it can't: the override was
-  // already inert, so recalcWidths would rewrite identical widths and re-park
+  // already inert, so applyPaneLayout would rewrite identical widths and re-park
   // every group for nothing. The flag still flipped, so the outcome is a change
   // — peek-manager's reveal/pin suppression keys off it.
   if (settings.leafAutoWidth) {
-    applyPaneCountChange(app, settings);
+    applyPaneLayout(app, settings);
   }
   return describeOutcome(message, true);
 }
