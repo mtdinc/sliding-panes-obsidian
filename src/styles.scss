@@ -61,23 +61,40 @@ body.plugin-sliding-panes:not(.plugin-sliding-panes-stacking) {
      peek  (10)  — full pane on hover; un-clips a revealed/pinned pane */
 body.plugin-sliding-panes.plugin-sliding-panes-stacking {
   .mod-root .workspace-tabs.mod-stacked .workspace-tab-container {
-    /* will-change: clip-path keeps the WHOLE pane rasterized while only a
-       strip of it is showing. Without it the browser paints just the visible
-       strip, and the hover expansion exposes never-painted area — black tiles
-       that fill in piece by piece. */
+    /* prelift: deliberately changes NOTHING visible — no z-index, no clip. It
+       only promotes a still-buried pane to its own compositing layer so the
+       browser rasterizes all of it before we lift it; the lift then uncovers
+       painted pixels instead of never-painted area (black tiles filling in).
+       peek-manager adds it at hover-intent and one frame before a landing
+       lift, and drops it the moment the peek class takes over — a will-change
+       left on permanently costs a full-size layer for nothing. */
+    > .workspace-leaf.sliding-panes-prelift {
+      will-change: transform;
+      transform: translateZ(0);
+    }
+    /* There is at most ONE reveal candidate per group, and its clip is
+       rewritten on every frame of a deck scroll, so it is worth one bounded
+       promoted layer: without it the compositor re-rasters the strip as it
+       widens and can show checkerboarding. This does NOT pre-paint anything
+       outside the clip — it only keeps the strip itself from being re-rastered
+       every frame. Deliberately scoped to the reveal alone; pinned panes are
+       unbounded in number and get no hint. */
     > .workspace-leaf.sliding-panes-reveal {
       z-index: 8;
       clip-path: inset(0 var(--sp-reveal-right, 0px) 0 var(--sp-reveal-left, 0px));
       filter: drop-shadow(4px 0 12px rgba(0, 0, 0, 0.35));
       will-change: clip-path;
     }
+    /* No will-change here: pins persist for the whole session and any number
+       of panes can hold one, so a permanent hint on each is a full-size retina
+       layer per pinned pane for no animation. */
     > .workspace-leaf.sliding-panes-pin-engaged {
       z-index: 9;
-      /* --sp-pin-clip-right is published by style-manager from peek-manager's
-         PIN_VISIBLE_FRACTION, the one owner of the pinned-clip geometry. */
+      /* --sp-pin-clip-right is written inline per pane by peek-manager, from
+         the real geometry of whatever is covering it; the percentage fallback
+         published by style-manager only covers the frame before that lands. */
       clip-path: inset(0 var(--sp-pin-clip-right, 50%) 0 0);
       filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.45));
-      will-change: clip-path;
     }
     > .workspace-leaf.sliding-panes-peek {
       z-index: 10;
@@ -141,9 +158,12 @@ body.plugin-sliding-panes.plugin-sliding-panes-stacking {
    the reveal/pin clips during the shrink.
    The transition must NOT live on the reveal/pin classes themselves: their
    clip geometry is recomputed on every deck scroll, and animating those
-   updates makes the strip lag and smear while scrolling. clip-path and
-   box-shadow only — animating filter (drop-shadow) forces the browser to
-   re-render the whole pane every frame, which is what caused black flashes.
+   updates makes the strip lag and smear while scrolling.
+   clip-path ONLY. Animating filter (drop-shadow) forces the browser to
+   re-render the whole pane every frame, which is what caused black flashes —
+   and box-shadow is barely cheaper: a 32px blur repainted on the main thread
+   every frame. The shadow needs no transition anyway, because the clip-path
+   that is animating also clips the shadow, so it sweeps in with the grow.
    Gated on the Smooth Animation setting like the scroll behavior below; with
    smooth off, the closing class is a harmless no-op and drops are instant. */
 body.plugin-sliding-panes.plugin-sliding-panes-stacking.plugin-sliding-panes-smooth {
@@ -151,13 +171,15 @@ body.plugin-sliding-panes.plugin-sliding-panes-stacking.plugin-sliding-panes-smo
     > .workspace-leaf.sliding-panes-peek-closing {
       z-index: 10;
       clip-path: inset(0 var(--sp-closing-right, 0px) 0 var(--sp-closing-left, 0px));
+      /* Transient by construction (peek-manager drops the class ~250ms later),
+         so the hint costs a layer only while the shrink is actually running. */
+      will-change: clip-path;
     }
     > .workspace-leaf.sliding-panes-peek,
     > .workspace-leaf.sliding-panes-peek-closing {
       /* --sp-lift-anim-ms is published by style-manager from peek-manager's
          PEEK_TRANSITION_MS, so the closing-class hold always outlasts it. */
-      transition: clip-path var(--sp-lift-anim-ms, 200ms) ease-out,
-                  box-shadow var(--sp-lift-anim-ms, 200ms) ease-out;
+      transition: clip-path var(--sp-lift-anim-ms, 200ms) ease-out;
     }
   }
 }

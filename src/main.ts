@@ -162,6 +162,14 @@ export default class SlidingPanesPlugin extends Plugin {
     // popout windows are covered too.
     peekManager.clearIfDetached();
     peekManager.attach(this.app, this.settings);
+
+    // attach() already re-evaluates on the next frame, but at that point
+    // Obsidian's OWN layout pass for this change may not have run yet, so the
+    // sticky spine offsets we measure are the pre-change ones. peek-manager
+    // owns the timing (it schedules per window, on each window's own clock).
+    // Deliberately NOT nudgeNativeLayout(): that dispatches a resize event,
+    // which would come straight back here.
+    peekManager.reevaluateAfterLayoutSettles();
   };
 
   // Window/pane resized: recalc widths, debounced so we don't thrash.

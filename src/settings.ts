@@ -53,10 +53,18 @@ function parseIntOr(value: string, fallback: number): number {
   return fallback;
 }
 
-// Heal any non-finite numeric setting back to its default. Older versions
-// could persist NaN (JSON stores it as null, which Object.assign then copies
-// over the default). Numeric keys are derived from the defaults instance, so
-// a new numeric setting is covered automatically — no key list to maintain.
+// The reveal strip's usable range. Below the minimum the strip is too narrow
+// to read anything from; above the maximum it stops being a strip at all — the
+// clip no longer hides any of the pane, so a full unclipped pane sits at
+// z-index 8 painting over every pane to its right.
+const MIN_EDGE_REVEAL_WIDTH = 40;
+const MAX_EDGE_REVEAL_WIDTH = 600;
+
+// Heal any non-finite numeric setting back to its default, then clamp the ones
+// that also have a usable RANGE. Older versions could persist NaN (JSON stores
+// it as null, which Object.assign then copies over the default). Numeric keys
+// are derived from the defaults instance, so a new numeric setting is covered
+// by the finite check automatically — no key list to maintain.
 export function sanitizeSettings(settings: SlidingPanesSettings): void {
   const defaults = new SlidingPanesSettings();
   const allKeys = Object.keys(defaults) as (keyof SlidingPanesSettings)[];
@@ -66,6 +74,12 @@ export function sanitizeSettings(settings: SlidingPanesSettings): void {
       (settings[key] as number) = defaultValue;
     }
   });
+
+  const clampedRevealWidth = Math.min(
+    Math.max(settings.edgeRevealWidth, MIN_EDGE_REVEAL_WIDTH),
+    MAX_EDGE_REVEAL_WIDTH
+  );
+  settings.edgeRevealWidth = clampedRevealWidth;
 }
 
 // Wait this long after the last keystroke in a numeric field before saving
@@ -82,7 +96,10 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
   }
 
   // Save the settings and re-apply them. Shared by every control below.
+  // Sanitizing here as well as at load is what keeps an out-of-range value
+  // typed into a field from taking effect for the rest of the session.
   private saveAndRefresh(): void {
+    sanitizeSettings(this.plugin.settings);
     this.plugin.saveData(this.plugin.settings);
     this.plugin.refresh();
   }
@@ -119,7 +136,14 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
           }
           saveTimer = window.setTimeout(() => {
             saveTimer = null;
-            this.saveAndRefresh();
+            this.saveAndRefresh(); // may clamp the value into its usable range
+            // Show what is actually in effect. Without this the field keeps
+            // displaying an out-of-range number that nothing is using, and
+            // reopening the tab would silently change what the user sees.
+            const storedValue = String(this.plugin.settings[key]);
+            if (text.getValue() !== storedValue) {
+              text.setValue(storedValue);
+            }
           }, NUMERIC_SAVE_DEBOUNCE_MS);
         }));
   }

@@ -156,14 +156,25 @@ export function getLeafElements(tabContainer: HTMLElement): HTMLElement[] {
   return leafElements;
 }
 
-// The next `.workspace-leaf` sibling after this element, or null — skips the
-// interleaved header elements.
-export function nextLeafSibling(element: HTMLElement): HTMLElement | null {
+// Every following sibling that takes part in the stacked layout — panes AND
+// spines, interleaved, in DOM order. Both kinds paint over what came before
+// them, so anything reasoning about "what covers this pane" must look at both:
+// a stacked container is header, leaf, header, leaf, ..., and the element
+// immediately after a pane is the NEXT PANE'S SPINE, not the next pane.
+export function followingStackedSiblings(element: HTMLElement): HTMLElement[] {
+  const siblings: HTMLElement[] = [];
+
   let next = element.nextElementSibling;
-  while (next && !next.classList.contains('workspace-leaf')) {
+  while (next) {
+    const isPane = next.classList.contains('workspace-leaf');
+    const isSpine = next.classList.contains('workspace-tab-header');
+    if ((isPane || isSpine) && isStylableElement(next)) {
+      siblings.push(next);
+    }
     next = next.nextElementSibling;
   }
-  return next as HTMLElement | null;
+
+  return siblings;
 }
 
 // The pane belonging to a spine: in stacked mode the container interleaves
