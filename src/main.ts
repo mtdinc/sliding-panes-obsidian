@@ -33,6 +33,10 @@ export default class SlidingPanesPlugin extends Plugin {
     this.settings = Object.assign(new SlidingPanesSettings(), await this.loadData());
     sanitizeSettings(this.settings);
 
+    // The visible-pane-count dial lives outside data.json (per device, not per
+    // vault), so width-manager loads its own state here.
+    widthManager.initPaneCount(this.app);
+
     this.addSettingTab(new SlidingPanesSettingTab(this.app, this));
     new SlidingPanesCommands(this).addCommands();
 
@@ -78,6 +82,9 @@ export default class SlidingPanesPlugin extends Plugin {
     }
     peekManager.detach();
     styleManager.remove(this.app);
+    // Focus mode is a session state: switching the plugin off and on again must
+    // not come back focused. The dial itself is persisted and survives.
+    widthManager.clearFocusMode();
     widthManager.clearWidths(this.app);
     // We blanked our inline min/max widths above; have Obsidian recompute its
     // own so panes don't sit uncapped until the next natural layout pass.

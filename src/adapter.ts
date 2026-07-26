@@ -123,6 +123,40 @@ export function leafForElement(app: App, leafElement: HTMLElement): WorkspaceLea
   return found;
 }
 
+// The leaf a tab group is currently DISPLAYING, or null if it can't be
+// determined. Read from the group's own `currentTab` index — the same source
+// Obsidian's own tab navigation uses.
+//
+// Deliberately NOT workspace.getMostRecentLeaf(group): that picks the highest
+// `activeTime` among the group's leaves, but activeTime stays 0 for every leaf
+// in a group that hasn't been activated this session (a restored split, a
+// popout, anything right after startup), and the comparison never advances past
+// the first child on all-zero times. It would answer "the first tab" for
+// exactly the groups the user hasn't touched — and a caller scrolling to that
+// answer would drag those groups hard left, away from wherever they were left.
+//
+// Everything about the shape is checked: an out-of-range index, a missing
+// children array, or a child that isn't leaf-shaped (a nested split, or an
+// internal API change) all yield null so callers skip the group silently.
+export function displayedLeaf(group: TabGroupLike): WorkspaceLeaf | null {
+  const groupWithTab = group as any;
+  const currentTab = groupWithTab.currentTab;
+  if (typeof currentTab !== 'number' || !Number.isInteger(currentTab)) {
+    return null;
+  }
+
+  const children = group.children;
+  if (!Array.isArray(children) || currentTab < 0 || currentTab >= children.length) {
+    return null;
+  }
+
+  const child = children[currentTab];
+  if (!child || !leafEl(child)) {
+    return null;
+  }
+  return child as WorkspaceLeaf;
+}
+
 // Popout windows are separate JavaScript realms, so `instanceof HTMLElement`
 // against THIS window's constructor wrongly fails for their elements. Every
 // element check in the plugin duck-types on `.style` through this one

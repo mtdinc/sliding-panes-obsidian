@@ -54,9 +54,34 @@ stack up as you scroll (also optional), allowing easy navigation between them.
   into view, so it never flashes or disappears mid-scroll
 - In auto-width mode, visible panes tile the screen exactly — no slivers or
   dead gaps once stacking begins
+- Pane count dial + focus mode (see below)
 - Togglable without copying CSS into your theme
 - Togglable sub-features: rotated headers, header direction, stacking, hover
-  peek, edge reveal, pin buttons
+  peek, edge reveal, pin buttons, double-click focus
+
+### Pane count and focus mode
+
+By default, auto-width fits as many panes on screen as the width setting
+allows. Four commands (bind them to hotkeys) let you overrule that:
+
+- **Show one more pane** — one more than you can currently see
+- **Show one fewer pane** — one fewer
+- **Reset pane count to automatic** — back to the width-setting rule
+- **Toggle focus mode (active pane full width)** — the active pane
+  temporarily takes the whole window; toggle again to go back to the count
+  you had
+
+You can also **double-click any spine** to toggle focus mode on and off. While
+focused, a **single click** on a spine switches which note fills the view — no
+second gesture needed. Turn the double-click off with the *Double-click Spine
+for Focus* setting.
+
+The chosen pane count is **remembered per device**, not in `data.json` — a
+desktop can sit at 3 panes while a synced laptop stays at 2. Focus mode is
+never remembered; it lasts until you toggle it off. Both need *Leaf Auto
+Width* on: with it off, the width setting alone decides how many panes fit.
+Panes never shrink below 280px in manual mode, so asking for more than fit
+simply lets the extras stack.
 
 ## Settings
 
@@ -70,6 +95,7 @@ stack up as you scroll (also optional), allowing easy navigation between them.
 - **Edge Reveal** — always show a content strip of the nearest buried pane next to the spines *(also via command/hotkey)*
 - **Edge Reveal Width** — how wide the revealed content strip is
 - **Pin Buttons** — show a pin button on each spine; pinning keeps that pane's left half visible while it's buried *(also via command/hotkey)*
+- **Double-click Spine for Focus** — double-clicking any spine toggles focus mode (the active pane takes the full width); while focused, single-click a spine to switch which note fills the view
 - **Spine Width** — the width of the rotated header (or gap) for stacking
 
 ## Compatibility

@@ -1,5 +1,7 @@
-import { App, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, Notice, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 import * as peekManager from './peek-manager';
+import * as scrollManager from './scroll-manager';
+import * as widthManager from './width-manager';
 
 export type Orientation = "sideway" | "mixed" | "upright"
 
@@ -29,7 +31,12 @@ export class SlidingPanesSettings {
   pinButtons: boolean = true;
   edgeReveal: boolean = true;
   edgeRevealWidth: number = 140;
+  doubleClickFocus: boolean = true;
 }
+
+// NB: the visible pane count (the dial) is deliberately NOT a setting — it is
+// stored per device in localStorage by width-manager, because data.json syncs
+// with the vault and a desktop and a laptop want different counts.
 
 // The settings keys that hold booleans / numbers, derived from the class
 // above so the helpers below can only be pointed at a key of the right type
@@ -233,6 +240,10 @@ export class SlidingPanesSettingTab extends PluginSettingTab {
       'When on, each spine shows a pin button (on hover, at the bottom). Pinning keeps that pane\'s left half visible above the stack whenever it is buried',
       'pinButtons');
 
+    this.addToggleSetting('Double-click Spine for Focus',
+      'When on, double-clicking any spine toggles focus mode, giving the active pane the full width (double-click again to restore). While focused, a single click on a spine switches which note fills the view',
+      'doubleClickFocus');
+
     this.addNumericSetting('Spine Width',
       'The width of the rotated header (or gap) for stacking',
       'headerWidth');
@@ -256,6 +267,25 @@ export class SlidingPanesCommands {
         this.plugin.refresh();
       }
     });
+  }
+
+  // Report and land one pane-count command. width-manager already decided what
+  // to do, persisted it, and re-applied the widths; all that is left is telling
+  // the user and making the new layout land somewhere sensible.
+  private runPaneCountCommand(outcome: widthManager.PaneCountOutcome): void {
+    new Notice(outcome.message);
+    if (!outcome.changed) {
+      return;
+    }
+
+    this.plugin.refresh();
+    // refresh() re-applies styles, widths and peek state but never scrolls, and
+    // changing the pane count can leave the pane the user is reading buried
+    // behind the spines — so bring it back into view explicitly.
+    const activeLeaf = this.plugin.app.workspace.getMostRecentLeaf();
+    if (activeLeaf) {
+      scrollManager.scrollLeafIntoView(this.plugin.app, this.plugin.settings, activeLeaf);
+    }
   }
 
   // Move focus to the pane one position to the left (direction -1) or right (+1)
@@ -340,6 +370,40 @@ export class SlidingPanesCommands {
       name: 'Toggle pin on current pane',
       callback: () => {
         peekManager.togglePinForActiveLeaf(this.plugin.app, this.plugin.settings);
+      }
+    });
+
+    // the visible-pane-count dial and focus mode. width-manager owns the count
+    // (and remembers it per device); these commands only report the result.
+    this.plugin.addCommand({
+      id: 'increase-visible-panes',
+      name: 'Show one more pane',
+      callback: () => {
+        this.runPaneCountCommand(widthManager.adjustPaneCount(this.plugin.app, this.plugin.settings, 1));
+      }
+    });
+
+    this.plugin.addCommand({
+      id: 'decrease-visible-panes',
+      name: 'Show one fewer pane',
+      callback: () => {
+        this.runPaneCountCommand(widthManager.adjustPaneCount(this.plugin.app, this.plugin.settings, -1));
+      }
+    });
+
+    this.plugin.addCommand({
+      id: 'reset-visible-panes',
+      name: 'Reset pane count to automatic',
+      callback: () => {
+        this.runPaneCountCommand(widthManager.resetPaneCount(this.plugin.app, this.plugin.settings));
+      }
+    });
+
+    this.plugin.addCommand({
+      id: 'toggle-focus-mode',
+      name: 'Toggle focus mode (active pane full width)',
+      callback: () => {
+        this.runPaneCountCommand(widthManager.toggleFocusMode(this.plugin.app, this.plugin.settings));
       }
     });
 

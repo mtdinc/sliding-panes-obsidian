@@ -20,10 +20,19 @@ import { getRevealSlotWidth } from './width-manager';
 // Scroll distances smaller than this are noise; skip them to avoid jitter.
 const SCROLL_EPSILON_PX = 1;
 
-// Monotonic id of the most recent scroll request. A deferred callback only
-// runs if it is still the latest request, so rapid tab switches can't fire a
-// stale scroll after a newer one was queued.
-let latestRequestId = 0;
+// Monotonic id of the most recent scroll request, PER SCROLL CONTAINER. A
+// deferred callback only runs if it is still the latest request for its own
+// container, so rapid tab switches can't fire a stale scroll after a newer one
+// was queued.
+//
+// Keyed per container rather than by one shared counter: with a single id, two
+// requests issued in the same pass but aimed at DIFFERENT containers cancelled
+// each other, and only the last one ever ran. That is wrong for any caller
+// parking more than one group at a time — a split layout's sibling groups, or
+// the main window and a popout — where every request targets a scrollport of
+// its own and none of them supersedes another. A WeakMap lets a closed group's
+// container (and its entry) be garbage collected.
+const latestRequestIds = new WeakMap<HTMLElement, number>();
 
 // Known limitation: the math below assumes LTR layout. RTL workspaces reverse
 // the scroll axis (negative scrollLeft); v3 never handled that either.
@@ -135,13 +144,14 @@ export function scrollLeafIntoView(app: App, settings: SlidingPanesSettings, lea
   // layout-change width pass) finish; the second lets the browser lay those
   // changes out so the rects we measure are final. Use the leaf's own window —
   // popouts have their own frame clock.
-  latestRequestId += 1;
-  const requestId = latestRequestId;
+  const previousRequestId = latestRequestIds.get(container) ?? 0;
+  const requestId = previousRequestId + 1;
+  latestRequestIds.set(container, requestId);
   const win = container.ownerDocument.defaultView ?? window;
   win.requestAnimationFrame(() => {
     win.requestAnimationFrame(() => {
-      if (requestId !== latestRequestId) {
-        return; // a newer scroll request superseded this one
+      if (requestId !== latestRequestIds.get(container)) {
+        return; // a newer scroll request for this container superseded this one
       }
       if (settings.disabled) {
         return; // plugin was turned off while this scroll was queued

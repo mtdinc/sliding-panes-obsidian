@@ -14,6 +14,8 @@ import {
   leafForHeader,
   TabGroupLike,
 } from './adapter';
+import * as scrollManager from './scroll-manager';
+import * as widthManager from './width-manager';
 
 // ---------------------------------------------------------------------------
 // peek-manager.ts is the SOLE owner of interactions that lift a pane above
@@ -989,12 +991,19 @@ function evaluateNow(doc: Document): void {
       : null;
   const shrinkDestination = shrinkingLeaf ? closingDestination(shrinkingLeaf) : null;
 
-  const pinsActive = stackingActive && !!settings && settings.pinButtons;
+  // Focus mode promises the active pane the WHOLE group, so nothing may be
+  // lifted over it: a reveal strip or an engaged pin would paint across the
+  // very pane the user asked to see alone. Pins stay on the user's list and
+  // simply don't engage — the next evaluation after focus exits re-engages
+  // them. (Hover peek is left alone: it is transient and user-initiated.)
+  const focusLayoutActive = !!settings && widthManager.isFocusLayoutActive(settings);
+
+  const pinsActive = stackingActive && !!settings && settings.pinButtons && !focusLayoutActive;
   const pinPlans = measurePins(pinsActive, doc);
 
   const groupPlans: GroupPlan[] = [];
   if (app && settings) {
-    const revealActive = stackingActive && settings.edgeReveal;
+    const revealActive = stackingActive && settings.edgeReveal && !focusLayoutActive;
     getRootTabGroups(app).forEach((group) => {
       if (!isStacked(group) || group.containerEl.ownerDocument !== doc) {
         return;
@@ -1236,6 +1245,69 @@ function removeLiftArtifacts(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Double-click a spine → focus mode
+//
+// The gesture is a plain TOGGLE of focus mode, and it deliberately does not
+// care WHICH spine was double-clicked. Obsidian activates a tab on the first
+// click of the pair, so by the time dblclick fires the double-clicked pane is
+// already the active one — there is no "focus that other pane instead" case to
+// distinguish, and trying to recover one would mean second-guessing Obsidian's
+// own click handling. Re-targeting needs no gesture of its own either: while
+// focus mode is on, a SINGLE click on any spine activates that pane and the
+// focus layout hands it the full width immediately.
+//
+// A thin caller by design: width-manager owns focus mode and re-applies the
+// widths; nothing here touches the peek / reveal / pin state machine beyond
+// asking for a re-evaluation once those widths have moved.
+// ---------------------------------------------------------------------------
+
+// Delegated per DOCUMENT, deliberately, rather than bound to each spine where
+// the pin buttons are injected: those buttons only exist while the Pin Buttons
+// setting is on, and spines are rebuilt on every layout change — a delegated
+// listener covers rebuilt spines, popout windows, and pins turned off, with no
+// per-header bookkeeping.
+function handleDoubleClick(event: MouseEvent): void {
+  const app = currentApp;
+  const settings = currentSettings;
+  if (!app || !settings || !settings.doubleClickFocus) {
+    return;
+  }
+  if (!isStackingActive(settings)) {
+    return; // nothing to focus out of when panes don't stack
+  }
+
+  const target = event.target as HTMLElement | null;
+  if (!target || typeof target.closest !== 'function') {
+    return;
+  }
+  // The pin button sits INSIDE the spine and swallows pointerdown / mousedown /
+  // click — but NOT dblclick, which is a separate event fired after the second
+  // click and still bubbles up from the button. Without this, double-clicking a
+  // pin would toggle focus as well.
+  if (target.closest('.' + PIN_BUTTON_CLASS)) {
+    return;
+  }
+  const header = target.closest('.workspace-tab-header') as HTMLElement | null;
+  if (!header || !isManagedElement(header)) {
+    return;
+  }
+
+  const outcome = widthManager.toggleFocusMode(app, settings);
+  if (!outcome.changed) {
+    new Notice(outcome.message); // refused — width-manager says why
+    return;
+  }
+
+  // Leaving focus shrinks every pane, which can bury the one being read, and no
+  // active-leaf-change fires on this path to scroll it back.
+  const activeLeaf = app.workspace.getMostRecentLeaf();
+  if (activeLeaf) {
+    scrollManager.scrollLeafIntoView(app, settings, activeLeaf);
+  }
+  reevaluate();
+}
+
+// ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
 
@@ -1310,6 +1382,7 @@ export function attach(app: App, settings: SlidingPanesSettings): void {
     doc.addEventListener('mouseover', handleMouseOver);
     doc.addEventListener('mouseleave', handleDocumentMouseLeave);
     doc.addEventListener('scroll', handleScrollCapture, true);
+    doc.addEventListener('dblclick', handleDoubleClick);
     attachedDocuments.push(doc);
   });
 
@@ -1343,6 +1416,7 @@ export function detach(): void {
     doc.removeEventListener('mouseover', handleMouseOver);
     doc.removeEventListener('mouseleave', handleDocumentMouseLeave);
     doc.removeEventListener('scroll', handleScrollCapture, true);
+    doc.removeEventListener('dblclick', handleDoubleClick);
   });
   attachedDocuments = [];
   documentsWithQueuedEvaluation.clear();
